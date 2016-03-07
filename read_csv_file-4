@@ -1,0 +1,565 @@
+# coding=gbk
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pandas import Series, DataFrame
+import time
+import xlwt
+# 复制文件
+import os
+import win32file
+import tempfile
+import numpy as np
+
+
+
+local_date=time.strftime("%Y%m%d-%H%M%S")
+#local_date=time.strftime("%Y%m%d")
+
+Latest_ALL_Output_File="Latest_ALL_Output.xls"
+Latest_Top_N_GenZhang_Output_File="Latest_Top_N_GenZhang_Output.xls"
+Latest_Top_N_GenDie_Output_File="Latest_Top_N_GenDie_Output.xls"
+
+Pic_Latest_ALL_Output_File="Pic_Latest_GenZhang.html"
+Pic_Latest_ALL_Output_File_Backup="Pic_Latest_GenZhang-"+local_date+".html"
+
+Pic_Latest_GenDie_Output_File="Pic_Latest_GenDie.html"
+Pic_Latest_GenDie_Output_File_Backup="Pic_Latest_GenDie-"+local_date+".html"
+
+Pic_Latest_GenZhang_TopN_Output_File="Pic_Latest_GenZhang_TopN.html"
+Pic_Latest_GenZhang_TopN_Output_File_Backup="Pic_Latest_GenZhang_TopN"+local_date+".html"
+
+Pic_Latest_GenDie_TopN_Output_File="Pic_Latest_GenDie_TopN.html"
+Pic_Latest_GenDie_TopN_Output_File_Backup="Pic_Latest_GenDie_TopN"+local_date+".html"
+
+Pic_Latest_Nday_GenDie_Output_File="Pic_GenDie_Latest"
+Pic_Latest_Nday_GenDie_Output_File_Backup="Pic_GenDie_Latest"
+
+Pic_Latest_Nday_GenZhang_Output_File="Pic_GenZhang_Latest"
+Pic_Latest_Nday_GenZhang_Output_File_Backup="Pic_GenZhang_Latest"
+
+#Pic_Latest_Top_N_GenZhang_Output_File="Latest_Top_N_GenZhang_Output.html"
+#Pic_Latest_Top_N_GenDie_Output_File="Latest_Top_N_GenDie_Output.html"
+
+Backup_path="c:\\wzr\\PyStock\\Backup\\"
+All_Output_Path="c:\\wzr\\PyStock\\"
+df = pd.read_csv("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv")
+
+#构建上一交易日收盘
+#df2=df['Close.HS300'][1:]
+#df2=Series(array([0,array(df['Close.HS300'][:-1])]))
+#df2[0]=0
+#df2=df2.sort_index(ascending=True)
+#转为array再转为Series
+df2=Series(np.array(Series([0]).append(df['Close.HS300'][:-1])))
+#以标准(HS300)的涨跌来确定趋势物(ASHR)的买卖
+#df4=df.ix[:,10]
+#df3=np.where(df.ix[:,10]>=df2,1,0)
+#直接用相同的行进行比较
+df['BiaoZhun_ZhangDie']=Series(np.where(df.ix[:,'Close.HS300']>=df2,1,0))
+#数组长度
+n=len(df)
+trade_today=Series([0])
+trade_Zhang_sum=Series([0])
+trade_Die_sum=Series([0])
+
+ShouXuFei=2
+MeiShou=100
+
+for i in range(1,n):
+    if df.ix[i,'BiaoZhun_ZhangDie']==1:
+        trade_today[i]=(df.ix[i,'Close.ASHR']-df.ix[i,'Open.ASHR'])*MeiShou-ShouXuFei
+        trade_Zhang_sum[i]=trade_Zhang_sum[i-1]+trade_today[i]
+        trade_Die_sum[i]=trade_Die_sum[i-1]
+    else:
+        trade_today[i]=(df.ix[i,'Open.ASHR']-df.ix[i,'Close.ASHR'])*MeiShou-ShouXuFei
+        trade_Die_sum[i]=trade_Die_sum[i-1]+trade_today[i]
+        trade_Zhang_sum[i]=trade_Zhang_sum[i-1]
+
+#开始拼接最后的完整输出
+df_All_Out=df
+df_All_Out['BiaoZhun_Zhang_Leiji']=trade_Zhang_sum
+df_All_Out['BiaoZhun_Die_Leiji']=trade_Die_sum
+
+#初始化两个变量用来存储各种方式下的跟涨/跟跌操作累计
+df_GenZhang=DataFrame()
+df_GenDie=DataFrame()
+
+df_GenZhang_Index=DataFrame()
+df_GenDie_Index=DataFrame()
+#从5%到50%
+initial_val=1
+end_val=10
+multi=5
+for j in range(initial_val,end_val):
+    trade_Zhang_sum=Series([0])
+    trade_Die_sum=Series([0])
+
+    trade_Zhang_JiaQiang_Index=Series([0])
+    trade_Die_JiaQiang_Index=Series([0])
+    for i in range(1,n):
+        if df.ix[i,'BiaoZhun_ZhangDie']==1:
+            if (df.ix[i,'High.HS300']-df.ix[i,'Close.HS300'])/ (df.ix[i,'High.HS300']-df.ix[i,'Low.HS300'])<=j*multi*0.01:
+                trade_Zhang_JiaQiang_Index[i]=1
+                trade_Die_JiaQiang_Index[i]=0
+
+                trade_Zhang_sum[i]= trade_Zhang_sum[i-1]+(df.ix[i,'Close.ASHR']-df.ix[i,'Open.ASHR'])*MeiShou-ShouXuFei
+                trade_Die_sum[i]=trade_Die_sum[i-1]
+            else:
+                trade_Zhang_JiaQiang_Index[i]=0
+                trade_Die_JiaQiang_Index[i]=0
+                trade_Zhang_sum[i]=trade_Zhang_sum[i-1]
+                trade_Die_sum[i]=trade_Die_sum[i-1]
+        else:
+            if (df.ix[i,'Close.HS300']-df.ix[i,'Low.HS300'])/ (df.ix[i,'High.HS300']-df.ix[i,'Low.HS300'])<=j*multi*0.01:
+                trade_Zhang_JiaQiang_Index[i]=0
+                trade_Die_JiaQiang_Index[i]=1
+                trade_Die_sum[i]=trade_Die_sum[i-1]+(df.ix[i,'Open.ASHR']-df.ix[i,'Close.ASHR'])*MeiShou-ShouXuFei
+                trade_Zhang_sum[i]=trade_Zhang_sum[i-1]
+            else:
+                trade_Zhang_JiaQiang_Index[i]=0
+                trade_Die_JiaQiang_Index[i]=0
+                trade_Zhang_sum[i]=trade_Zhang_sum[i-1]
+                trade_Die_sum[i]=trade_Die_sum[i-1]
+
+    df_GenZhang['GengZhang_ZongJi('+str(j*multi)+'%)']= trade_Zhang_sum
+    df_GenDie['GengDie_ZongJi('+str(j*multi)+'%)']=trade_Die_sum
+
+    df_GenZhang_Index['GengZhang_Index('+str(j*multi)+'%)']= trade_Zhang_JiaQiang_Index
+    df_GenDie_Index['GengDie_Index('+str(j*multi)+'%)']=trade_Die_JiaQiang_Index
+
+df_All_Out=df.join(df_GenZhang_Index)
+df_All_Out=df_All_Out.join(df_GenZhang)
+df_All_Out=df_All_Out.join(df_GenDie_Index)
+df_All_Out=df_All_Out.join(df_GenDie)
+#输出到文件
+df_All_Out.to_excel(Backup_path+'All_Output-'+local_date+'.xls')
+df_All_Out.to_excel(All_Output_Path+Latest_ALL_Output_File)
+
+
+#选出最近第N个交易日的操作结果
+Last_N_Day=5
+trade_Die_sum=Series([0])
+
+#+1为了增加一个空位给普通涨跌操作的Latest_N
+Gen_Zhang_which_line=list(range(initial_val,end_val+1))
+Gen_Die_which_line=list(range(initial_val,end_val+1))
+for j in range(initial_val,end_val):
+    #Gen_Zhang_which_line[j-1]=len(df_GenZhang_Index[df_GenZhang_Index['GengZhang_Index('+str(j*multi)+'%)']==1].index)-(Last_N_Day-1)
+    #a=len(df_GenZhang_Index[df_GenZhang_Index['GengZhang_Index('+str(j*multi)+'%)']==1].index)-(Last_N_Day-1)
+    a=len(df_GenZhang_Index[df_GenZhang_Index['GengZhang_Index('+str(j*multi)+'%)']==1].index)-(Last_N_Day)
+    Gen_Zhang_which_line[j-1]=df_GenZhang_Index[df_GenZhang_Index['GengZhang_Index('+str(j*multi)+'%)']==1].index[a]
+    #Gen_Die_which_line[j-1]=len(df_GenDie_Index[df_GenDie_Index['GengDie_Index('+str(j*multi)+'%)']==1].index)-(Last_N_Day-1)
+    #a=len(df_GenDie_Index[df_GenDie_Index['GengDie_Index('+str(j*multi)+'%)']==1].index)-(Last_N_Day-1)
+    a=len(df_GenDie_Index[df_GenDie_Index['GengDie_Index('+str(j*multi)+'%)']==1].index)-(Last_N_Day)
+    Gen_Die_which_line[j-1]=df_GenDie_Index[df_GenDie_Index['GengDie_Index('+str(j*multi)+'%)']==1].index[a]
+
+#普通涨跌操作的Latest_N也加入筛选
+a=len(df[df['BiaoZhun_ZhangDie']==1].index)-(Last_N_Day)
+Gen_Zhang_which_line[j]=df[df['BiaoZhun_ZhangDie']==1].index[a]
+
+a=len(df[df['BiaoZhun_ZhangDie']==0].index)-(Last_N_Day)
+Gen_Die_which_line[j]=df[df['BiaoZhun_ZhangDie']==0].index[a]
+
+Gen_Zhang_which_line_min=min( Gen_Zhang_which_line)
+Gen_Die_which_line_min=min(Gen_Die_which_line)
+
+# 定下index
+
+#n+1对应下面的赋值 df_GenZhang_JiaQiang.ix[n]=Gen_Zhang_which_line df_GenDie_JiaQiang.ix[n]=Gen_Die_which_line
+#df_GenZhang_JiaQiang=DataFrame(index=range(Gen_Zhang_which_line_min,n+1))
+#df_GenDie_JiaQiang=DataFrame(index=range(Gen_Die_which_line_min,n+1))
+
+df_GenZhang_JiaQiang=DataFrame(index=range(Gen_Zhang_which_line_min,n))
+df_GenDie_JiaQiang=DataFrame(index=range(Gen_Die_which_line_min,n))
+
+
+for j in range(initial_val,end_val):
+    #初始化
+    #trade_Zhang_sum_Last_N_day=Series([0],index=range(Gen_Zhang_which_line_min-1,n))
+    trade_Zhang_sum_Last_N_day=Series([float(0)],index=range(Gen_Zhang_which_line_min-1,n))
+    #trade_Die_sum_Last_N_day=Series([0],index=range(Gen_Die_which_line_min-1,n))
+    trade_Die_sum_Last_N_day=Series([float(0)],index=range(Gen_Die_which_line_min-1,n))
+
+    for i in range(Gen_Zhang_which_line[j-1],n):
+        if df_GenZhang_Index.ix[i]['GengZhang_Index('+str(j*multi)+'%)']==1:
+            trade_Zhang_sum_Last_N_day[i]=trade_Zhang_sum_Last_N_day[i-1]+(df.ix[i,'Open.ASHR']-df.ix[i,'Close.ASHR'])*MeiShou-ShouXuFei
+        else:
+            trade_Zhang_sum_Last_N_day[i]=trade_Zhang_sum_Last_N_day[i-1]
+
+    for i in range(Gen_Die_which_line[j-1],n):
+        if df_GenDie_Index.ix[i]['GengDie_Index('+str(j*multi)+'%)']==1:
+            trade_Die_sum_Last_N_day[i]=trade_Die_sum_Last_N_day[i-1]+(df.ix[i,'Close.ASHR']-df.ix[i,'Open.ASHR'])*MeiShou-ShouXuFei
+        else:
+            trade_Die_sum_Last_N_day[i]=trade_Die_sum_Last_N_day[i-1]
+
+    df_GenZhang_JiaQiang['GengZhang_JiaQiang_ZongJi('+str(j*multi)+'%)']=trade_Zhang_sum_Last_N_day
+    df_GenDie_JiaQiang['GengDie_JiaQiang_ZongJi('+str(j*multi)+'%)']=trade_Die_sum_Last_N_day
+
+#df_GenZhang_JiaQiang.ix[n]=Gen_Zhang_which_line
+#df_GenDie_JiaQiang.ix[n]=Gen_Die_which_line
+
+#原始涨跌操作也要计入排名统计
+trade_Zhang_sum_Last_N_day=Series([float(0)],index=range(Gen_Zhang_which_line_min-1,n))
+trade_Die_sum_Last_N_day=Series([float(0)],index=range(Gen_Die_which_line_min-1,n))
+for i in range(Gen_Zhang_which_line[j],n):
+    if df.ix[i]['BiaoZhun_ZhangDie']==1:
+        trade_Zhang_sum_Last_N_day[i]=trade_Zhang_sum_Last_N_day[i-1]+(df.ix[i,'Open.ASHR']-df.ix[i,'Close.ASHR'])*MeiShou-ShouXuFei
+    else:
+        trade_Zhang_sum_Last_N_day[i]=trade_Zhang_sum_Last_N_day[i-1]
+
+for i in range(Gen_Die_which_line[j],n):
+     if df.ix[i]['BiaoZhun_ZhangDie']==0:
+         trade_Die_sum_Last_N_day[i]=trade_Die_sum_Last_N_day[i-1]+(df.ix[i,'Close.ASHR']-df.ix[i,'Open.ASHR'])*MeiShou-ShouXuFei
+     else:
+         trade_Die_sum_Last_N_day[i]=trade_Die_sum_Last_N_day[i-1]
+
+df_GenZhang_JiaQiang['BiaoZhun_Zhang_Zong']=trade_Zhang_sum_Last_N_day
+df_GenDie_JiaQiang['BiaoZhun_Die_Leiji']=trade_Die_sum_Last_N_day
+
+#-----20160303-----
+
+for Last_Nday in [5,10,20]:
+    df_GenZhang_Last_Nday=df_GenZhang.tail(Last_Nday+1)
+    df_GenZhang_Last_Nday=DataFrame( np.array(df_GenZhang_Last_Nday.tail(Last_Nday)) - np.array(df_GenZhang_Last_Nday.head(1)))
+    df_GenZhang_Last_Nday.columns=df_GenZhang.columns
+    df_GenZhang_Last_Nday.index=df_GenZhang.tail(Last_Nday).index
+    C=df_GenZhang_Last_Nday.head(1).index
+    B=DataFrame(df['Date'][min(C):])
+    df_GenZhang_Last_Nday=B.join(df_GenZhang_Last_Nday)
+
+    df_GenZhang_Last_Nday.to_excel(All_Output_Path+Pic_Latest_Nday_GenZhang_Output_File+'_'+str(Last_Nday)+'_Days.xls')
+    df_GenZhang_Last_Nday.to_excel(Backup_path+'GenZhang_Latest_'+str(Last_Nday)+'_Days-'+local_date+'.xls')
+
+    df_GenDie_Last_Nday=df_GenDie.tail(Last_Nday+1)
+    df_GenDie_Last_Nday=DataFrame( np.array(df_GenDie_Last_Nday.tail(Last_Nday)) - np.array(df_GenDie_Last_Nday.head(1)))
+    df_GenDie_Last_Nday.columns=df_GenDie.columns
+    df_GenDie_Last_Nday.index=df_GenDie.tail(Last_Nday).index
+    C=df_GenDie_Last_Nday.head(1).index
+    B=DataFrame(df['Date'][min(C):])
+    df_GenDie_Last_Nday=B.join(df_GenDie_Last_Nday)
+
+    df_GenDie_Last_Nday.to_excel(All_Output_Path+Pic_Latest_Nday_GenDie_Output_File+'_'+str(Last_Nday)+'_Days.xls')
+    df_GenDie_Last_Nday.to_excel(Backup_path+'GenDie_Latest_'+str(Last_Nday)+'_Days-'+local_date+'.xls')
+#-----20160303-----
+
+Top_N=5
+#根据最后一行的累计操作结果对列进行排序，这个可以按需抽取出需要的TOP N来输出
+#df_GenZhang_JiaQiang=df_GenZhang_JiaQiang.T.sort_index(by=n-1).T
+df_GenZhang_JiaQiang=df_GenZhang_JiaQiang.T.sort_index(by=n-1).tail(Top_N).T
+#df_GenZhang_JiaQiang['Date']=df['Date']
+df_GenZhang_JiaQiang=DataFrame(df['Date'][Gen_Zhang_which_line_min:]).join(df_GenZhang_JiaQiang)
+
+#输出跟涨操作最新Last_N到文件
+df_GenZhang_JiaQiang.to_excel(All_Output_Path+Latest_Top_N_GenZhang_Output_File)
+df_GenZhang_JiaQiang.to_excel(Backup_path+'Top_N_GenZhang_Output-'+local_date+'.xls')
+
+#df_GenDie_JiaQiang=df_GenDie_JiaQiang.T.sort_index(by=n-1).T
+df_GenDie_JiaQiang=df_GenDie_JiaQiang.T.sort_index(by=n-1).tail(Top_N).T
+#df_GenDie_JiaQiang['Date']=df['Date']
+df_GenDie_JiaQiang=DataFrame(df['Date'][Gen_Die_which_line_min:]).join(df_GenDie_JiaQiang)
+
+#输出跟涨跌作最新Last_N到文件
+#df_All_Out.to_excel(All_Output_Path+'GenDie_Last_N'+local_date+'.xls')
+df_GenDie_JiaQiang.to_excel(All_Output_Path+Latest_Top_N_GenDie_Output_File)
+df_GenDie_JiaQiang.to_excel(Backup_path+'Top_N_GenDie_Output-'+local_date+'.xls')
+
+
+write_2_html_part_1="""
+<!DOCTYPE html>
+<head>
+    <meta charset="utf-8">
+    <title>ECharts</title>
+</head>
+<body>
+    <div id="main" style="height:700px"></div>
+    <script src="http://echarts.baidu.com/build/dist/echarts.js"></script>
+    <script type="text/javascript">
+    """
+#第一次必须是'w'，覆盖之前的文件，后面才是追加'a'
+f=open(All_Output_Path+Pic_Latest_ALL_Output_File,'w')
+print >>f,write_2_html_part_1
+f.close()
+
+#df_All_Out['BiaoZhun_Zhang_Leiji']
+#Date_A = list(df_All_Out['Date'])
+Date_A = list(df_All_Out['Date'])
+
+GenZhang_Latest_Date='\'GenZhang Latest Date:'+df_All_Out.ix[df['Date'].index[-1]]['Date']+'\''
+
+#列数不要跟输出的xls文件相混淆了，这里取的是程序中的变量数值
+Data_All='['
+for i in range(0,end_val):
+    Data_All=Data_All+'var_'+str(i)+','
+    if i==int(end_val/2)-1:
+        Data_All=Data_All+'\'\','
+
+Data_All=Data_All+']'
+
+#不是第一次，后面追加，所以是'a'
+f=open(All_Output_Path+Pic_Latest_ALL_Output_File,'a')
+print >>f,'Date_A=',Date_A
+print >>f,'Latest_Date=',GenZhang_Latest_Date
+print >>f,'\n'
+
+#这一部分无法使用以上的变量替代方法
+#输出要显示的data
+#print >>f,'Data_All=',Data_All
+#print >>f,'\n'
+
+var_temp='\''+df_All_Out.columns[12]+'\''
+print >>f,'var_0=',var_temp
+for i in range(1,end_val):
+    var_temp='\''+df_All_Out.columns[i+22]+'\''
+    print >>f,'var_%s'%i,'=',var_temp
+
+print >>f,'\n'
+
+data_temp=list(df_All_Out.ix[:,12])
+print >>f,'data_0=',data_temp
+for i in range(1,end_val):
+    data_temp=list(df_All_Out.ix[:,i+22])
+    print >>f,'data_%s'%i,'=',data_temp
+
+print >>f,'\n'
+
+write_2_html_part_3="""
+        require.config({
+            paths: {
+                echarts: 'http://echarts.baidu.com/build/dist'
+            }
+        });
+
+        require(
+            [
+                'echarts',
+                'echarts/chart/line'
+            ],
+            function (ec) {
+                var myChart = ec.init(document.getElementById('main'));
+
+                var option = {
+    tooltip : {
+        trigger: 'axis'
+    },
+    title : {
+        text: Latest_Date
+    },
+    legend: {
+"""
+
+print >>f,write_2_html_part_3
+
+print >>f,'        data:',Data_All
+
+write_2_html_part_5="""
+    },
+    toolbox: {
+        show : true,
+        feature : {
+            mark : {show: true},
+            dataView : {show: true, readOnly: false},
+            magicType : {show: true, type: ['line', 'bar', 'stack', 'tiled']},
+            restore : {show: true},
+            saveAsImage : {show: true}
+        }
+    },
+    calculable : true,
+    xAxis : [
+        {
+            type : 'category',
+            boundaryGap : false,
+              data : Date_A
+        }
+    ],
+    yAxis : [
+        {
+            type : 'value'
+        }
+    ],
+    series : [
+"""
+print >>f,write_2_html_part_5
+
+for i in range(0,end_val):
+    print >>f,'        {'
+    print >>f,'            name:var_%s,'%i
+    print >>f,'            type:\'line\','
+    print >>f,'            stack: \'USD\','
+    print >>f,'            data:data_%s'%i
+    print >>f,'        },'
+
+write_2_html_part_7="""
+    ]
+};
+
+                myChart.setOption(option);
+            }
+        );
+    </script>
+</body>
+"""
+print >>f,write_2_html_part_7
+f.close()
+
+f=open(All_Output_Path+Pic_Latest_GenDie_Output_File,'w')
+print >>f,write_2_html_part_1
+print >>f,'\n'
+print >>f,'Date_A=',Date_A
+
+GenDie_Latest_Date='\'GenDie Latest Date:'+df_All_Out.ix[df['Date'].index[-1]]['Date']+'\''
+print >>f,'Latest_Date=',GenDie_Latest_Date
+print >>f,'\n'
+
+var_temp='\''+df_All_Out.columns[13]+'\''
+print >>f,'var_0=',var_temp
+for i in range(1,end_val):
+    var_temp='\''+df_All_Out.columns[i+40]+'\''
+    print >>f,'var_%s'%i,'=',var_temp
+
+print >>f,'\n'
+
+data_temp=list(df_All_Out.ix[:,13])
+print >>f,'data_0=',data_temp
+for i in range(1,end_val):
+    data_temp=list(df_All_Out.ix[:,i+40])
+    print >>f,'data_%s'%i,'=',data_temp
+
+print >>f,'\n'
+
+print >>f,write_2_html_part_3
+
+print >>f,'        data:',Data_All
+
+print >>f,write_2_html_part_5
+
+for i in range(0,end_val):
+    print >>f,'        {'
+    print >>f,'            name:var_%s,'%i
+    print >>f,'            type:\'line\','
+    print >>f,'            stack: \'USD\','
+    print >>f,'            data:data_%s'%i
+    print >>f,'        },'
+
+print >>f,write_2_html_part_7
+f.close()
+
+#输出跟涨前X次操作的TOP_N
+f=open(All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File,'w')
+print >>f,write_2_html_part_1
+print >>f,'\n'
+
+#输出eCharts的x坐标日期
+Date_A = list(df_GenZhang_JiaQiang['Date'])
+print >>f,'Date_A=',Date_A
+
+#输出标题
+GenZhang_TopN_Latest_Date='\'GenZhang TOPx Latest:'+df_GenZhang_JiaQiang.ix[df['Date'].index[-1]]['Date']+'\''
+print >>f,'Latest_Date=',GenZhang_TopN_Latest_Date
+print >>f,'\n'
+
+
+
+var_temp='\''+df_GenZhang_JiaQiang.columns[1]+'\''
+print >>f,'var_0=',var_temp
+for i in range(1,Top_N):
+    var_temp='\''+df_GenZhang_JiaQiang.columns[i+1]+'\''
+    print >>f,'var_%s'%i,'=',var_temp
+
+print >>f,'\n'
+
+data_temp=list(df_GenZhang_JiaQiang.ix[:,1])
+print >>f,'data_0=',data_temp
+for i in range(1,Top_N):
+    data_temp=list(df_GenZhang_JiaQiang.ix[:,i+1])
+    print >>f,'data_%s'%i,'=',data_temp
+
+print >>f,'\n'
+
+print >>f,write_2_html_part_3
+
+
+Data_All='['
+for i in range(0,Top_N):
+    Data_All=Data_All+'var_'+str(i)+','
+    if i==int(Top_N/2)-1:
+        Data_All=Data_All+'\'\','
+
+Data_All=Data_All+']'
+print >>f,'        data:',Data_All
+
+print >>f,write_2_html_part_5
+
+for i in range(0,Top_N):
+    print >>f,'        {'
+    print >>f,'            name:var_%s,'%i
+    print >>f,'            type:\'line\','
+    print >>f,'            stack: \'USD\','
+    print >>f,'            data:data_%s'%i
+    print >>f,'        },'
+
+print >>f,write_2_html_part_7
+f.close()
+
+
+#输出跟跌前X次操作的TOP_N
+f=open(All_Output_Path+Pic_Latest_GenDie_TopN_Output_File,'w')
+print >>f,write_2_html_part_1
+print >>f,'\n'
+
+#输出eCharts的x坐标日期
+Date_A = list(df_GenDie_JiaQiang['Date'])
+print >>f,'Date_A=',Date_A
+
+#输出标题
+GenDie_TopN_Latest_Date='\'GenDie TOPx Latest:'+df_GenDie_JiaQiang.ix[df['Date'].index[-1]]['Date']+'\''
+print >>f,'Latest_Date=',GenDie_TopN_Latest_Date
+print >>f,'\n'
+
+
+var_temp='\''+df_GenDie_JiaQiang.columns[1]+'\''
+print >>f,'var_0=',var_temp
+for i in range(1,Top_N):
+    var_temp='\''+df_GenDie_JiaQiang.columns[i+1]+'\''
+    print >>f,'var_%s'%i,'=',var_temp
+
+print >>f,'\n'
+
+data_temp=list(df_GenDie_JiaQiang.ix[:,1])
+print >>f,'data_0=',data_temp
+for i in range(1,Top_N):
+    data_temp=list(df_GenDie_JiaQiang.ix[:,i+1])
+    print >>f,'data_%s'%i,'=',data_temp
+
+print >>f,'\n'
+
+print >>f,write_2_html_part_3
+
+Data_All='['
+for i in range(0,Top_N):
+    Data_All=Data_All+'var_'+str(i)+','
+    if i==int(Top_N/2)-1:
+        Data_All=Data_All+'\'\','
+
+Data_All=Data_All+']'
+print >>f,'        data:',Data_All
+
+print >>f,write_2_html_part_5
+
+for i in range(0,Top_N):
+    print >>f,'        {'
+    print >>f,'            name:var_%s,'%i
+    print >>f,'            type:\'line\','
+    print >>f,'            stack: \'USD\','
+    print >>f,'            data:data_%s'%i
+    print >>f,'        },'
+
+print >>f,write_2_html_part_7
+f.close()
+
+#复制一份到backup文件夹，带上日期
+win32file.CopyFile (All_Output_Path+Pic_Latest_ALL_Output_File, Backup_path+Pic_Latest_ALL_Output_File_Backup, 0)
+win32file.CopyFile (All_Output_Path+Pic_Latest_GenDie_Output_File, Backup_path+Pic_Latest_GenDie_Output_File_Backup, 0)
+win32file.CopyFile (All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File, Pic_Latest_GenZhang_TopN_Output_File_Backup, 0)
+win32file.CopyFile (All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File, Pic_Latest_GenDie_TopN_Output_File_Backup, 0)
