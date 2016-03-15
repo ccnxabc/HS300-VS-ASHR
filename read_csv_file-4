@@ -28,10 +28,10 @@ Pic_Latest_GenDie_Output_File="Pic_Latest_GenDie.html"
 Pic_Latest_GenDie_Output_File_Backup="Pic_Latest_GenDie-"+local_date+".html"
 
 Pic_Latest_GenZhang_TopN_Output_File="Pic_Latest_GenZhang_TopN.html"
-Pic_Latest_GenZhang_TopN_Output_File_Backup="Pic_Latest_GenZhang_TopN"+local_date+".html"
+Pic_Latest_GenZhang_TopN_Output_File_Backup="Pic_Latest_GenZhang_TopN-"+local_date+".html"
 
 Pic_Latest_GenDie_TopN_Output_File="Pic_Latest_GenDie_TopN.html"
-Pic_Latest_GenDie_TopN_Output_File_Backup="Pic_Latest_GenDie_TopN"+local_date+".html"
+Pic_Latest_GenDie_TopN_Output_File_Backup="Pic_Latest_GenDie_TopN-"+local_date+".html"
 
 Pic_Latest_Nday_GenDie_Output_File="Pic_GenDie_Latest"
 Pic_Latest_Nday_GenDie_Output_File_Backup="Pic_GenDie_Latest"
@@ -42,9 +42,18 @@ Pic_Latest_Nday_GenZhang_Output_File_Backup="Pic_GenZhang_Latest"
 #Pic_Latest_Top_N_GenZhang_Output_File="Latest_Top_N_GenZhang_Output.html"
 #Pic_Latest_Top_N_GenDie_Output_File="Latest_Top_N_GenDie_Output.html"
 
-Backup_path="c:\\wzr\\PyStock\\Backup\\"
-All_Output_Path="c:\\wzr\\PyStock\\"
-df = pd.read_csv("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv")
+#-----20160307  使用相对地址，对于ASHR仍然使用绝对地址，CHAD往后使用相对地址-----
+#Backup_path="..\\Backup\\"
+#All_Output_Path="c:\\wzr\\PyStock\\"
+#df = pd.read_csv("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv")
+
+BASE_DIR = os.path.dirname(__file__) #获取当前文件夹的绝对路径
+Backup_path = os.path.join(BASE_DIR, 'Backup\\')
+All_Output_Path=  BASE_DIR+'/'
+BiaoDi_Name='CHAD-HS300'
+df = pd.read_csv(os.path.join(BASE_DIR, BiaoDi_Name+'.csv'))
+
+#-----20160307  使用相对地址-----
 
 #构建上一交易日收盘
 #df2=df['Close.HS300'][1:]
@@ -137,10 +146,9 @@ df_All_Out=df_All_Out.join(df_GenDie)
 df_All_Out.to_excel(Backup_path+'All_Output-'+local_date+'.xls')
 df_All_Out.to_excel(All_Output_Path+Latest_ALL_Output_File)
 
-
 #选出最近第N个交易日的操作结果
 Last_N_Day=5
-trade_Die_sum=Series([0])
+#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!trade_Die_sum=Series([0])
 
 #+1为了增加一个空位给普通涨跌操作的Latest_N
 Gen_Zhang_which_line=list(range(initial_val,end_val+1))
@@ -218,32 +226,6 @@ for i in range(Gen_Die_which_line[j],n):
 df_GenZhang_JiaQiang['BiaoZhun_Zhang_Zong']=trade_Zhang_sum_Last_N_day
 df_GenDie_JiaQiang['BiaoZhun_Die_Leiji']=trade_Die_sum_Last_N_day
 
-#-----20160303-----
-
-for Last_Nday in [5,10,20]:
-    df_GenZhang_Last_Nday=df_GenZhang.tail(Last_Nday+1)
-    df_GenZhang_Last_Nday=DataFrame( np.array(df_GenZhang_Last_Nday.tail(Last_Nday)) - np.array(df_GenZhang_Last_Nday.head(1)))
-    df_GenZhang_Last_Nday.columns=df_GenZhang.columns
-    df_GenZhang_Last_Nday.index=df_GenZhang.tail(Last_Nday).index
-    C=df_GenZhang_Last_Nday.head(1).index
-    B=DataFrame(df['Date'][min(C):])
-    df_GenZhang_Last_Nday=B.join(df_GenZhang_Last_Nday)
-
-    df_GenZhang_Last_Nday.to_excel(All_Output_Path+Pic_Latest_Nday_GenZhang_Output_File+'_'+str(Last_Nday)+'_Days.xls')
-    df_GenZhang_Last_Nday.to_excel(Backup_path+'GenZhang_Latest_'+str(Last_Nday)+'_Days-'+local_date+'.xls')
-
-    df_GenDie_Last_Nday=df_GenDie.tail(Last_Nday+1)
-    df_GenDie_Last_Nday=DataFrame( np.array(df_GenDie_Last_Nday.tail(Last_Nday)) - np.array(df_GenDie_Last_Nday.head(1)))
-    df_GenDie_Last_Nday.columns=df_GenDie.columns
-    df_GenDie_Last_Nday.index=df_GenDie.tail(Last_Nday).index
-    C=df_GenDie_Last_Nday.head(1).index
-    B=DataFrame(df['Date'][min(C):])
-    df_GenDie_Last_Nday=B.join(df_GenDie_Last_Nday)
-
-    df_GenDie_Last_Nday.to_excel(All_Output_Path+Pic_Latest_Nday_GenDie_Output_File+'_'+str(Last_Nday)+'_Days.xls')
-    df_GenDie_Last_Nday.to_excel(Backup_path+'GenDie_Latest_'+str(Last_Nday)+'_Days-'+local_date+'.xls')
-#-----20160303-----
-
 Top_N=5
 #根据最后一行的累计操作结果对列进行排序，这个可以按需抽取出需要的TOP N来输出
 #df_GenZhang_JiaQiang=df_GenZhang_JiaQiang.T.sort_index(by=n-1).T
@@ -264,7 +246,6 @@ df_GenDie_JiaQiang=DataFrame(df['Date'][Gen_Die_which_line_min:]).join(df_GenDie
 #df_All_Out.to_excel(All_Output_Path+'GenDie_Last_N'+local_date+'.xls')
 df_GenDie_JiaQiang.to_excel(All_Output_Path+Latest_Top_N_GenDie_Output_File)
 df_GenDie_JiaQiang.to_excel(Backup_path+'Top_N_GenDie_Output-'+local_date+'.xls')
-
 
 write_2_html_part_1="""
 <!DOCTYPE html>
@@ -558,8 +539,223 @@ for i in range(0,Top_N):
 print >>f,write_2_html_part_7
 f.close()
 
+
 #复制一份到backup文件夹，带上日期
 win32file.CopyFile (All_Output_Path+Pic_Latest_ALL_Output_File, Backup_path+Pic_Latest_ALL_Output_File_Backup, 0)
 win32file.CopyFile (All_Output_Path+Pic_Latest_GenDie_Output_File, Backup_path+Pic_Latest_GenDie_Output_File_Backup, 0)
-win32file.CopyFile (All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File, Pic_Latest_GenZhang_TopN_Output_File_Backup, 0)
-win32file.CopyFile (All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File, Pic_Latest_GenDie_TopN_Output_File_Backup, 0)
+win32file.CopyFile (All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File, Backup_path+Pic_Latest_GenZhang_TopN_Output_File_Backup, 0)
+win32file.CopyFile (All_Output_Path+Pic_Latest_GenZhang_TopN_Output_File, Backup_path+Pic_Latest_GenDie_TopN_Output_File_Backup, 0)
+
+
+
+#-----20160303-----
+#选取5，10，20个交易日的获利情况
+Last_Nday_include=[5,10,20]
+for Last_Nday in Last_Nday_include:
+    df_GenZhang_Last_Nday=df_GenZhang.tail(Last_Nday+1)
+    df_GenZhang_Last_Nday=DataFrame( np.array(df_GenZhang_Last_Nday.tail(Last_Nday)) - np.array(df_GenZhang_Last_Nday.head(1)))
+    df_GenZhang_Last_Nday.columns=df_GenZhang.columns
+
+    #-----20160307 加入普通涨跌的操作
+    trade_Zhang_sum_Last_Nday=trade_Zhang_sum.tail(Last_Nday+1)
+    df_GenZhang_Last_Nday['BiaoZhun_Zhang_Zong']=np.array(trade_Zhang_sum_Last_Nday.tail(Last_Nday))-np.array(trade_Zhang_sum_Last_Nday.head(1))
+
+    df_GenZhang_Last_Nday.index=df_GenZhang.tail(Last_Nday).index
+    C=df_GenZhang_Last_Nday.head(1).index
+    B=DataFrame(df['Date'][min(C):])
+    df_GenZhang_Last_Nday=B.join(df_GenZhang_Last_Nday)
+
+    df_GenZhang_Last_Nday.to_excel(All_Output_Path+Pic_Latest_Nday_GenZhang_Output_File+'_'+str(Last_Nday)+'_Days.xls')
+    df_GenZhang_Last_Nday.to_excel(Backup_path+'GenZhang_Latest_'+str(Last_Nday)+'_Days-'+local_date+'.xls')
+    #-----跟跌操作-----
+    df_GenDie_Last_Nday=df_GenDie.tail(Last_Nday+1)
+    df_GenDie_Last_Nday=DataFrame( np.array(df_GenDie_Last_Nday.tail(Last_Nday)) - np.array(df_GenDie_Last_Nday.head(1)))
+    df_GenDie_Last_Nday.columns=df_GenDie.columns
+
+    #-----20160307 加入普通涨跌的操作
+    trade_Die_sum_Last_Nday=trade_Die_sum.tail(Last_Nday+1)
+    df_GenDie_Last_Nday['BiaoZhun_Die_Leiji']=np.array(trade_Die_sum_Last_Nday.tail(Last_Nday))-np.array(trade_Die_sum_Last_Nday.head(1))
+
+    df_GenDie_Last_Nday.index=df_GenDie.tail(Last_Nday).index
+    C=df_GenDie_Last_Nday.head(1).index
+    B=DataFrame(df['Date'][min(C):])
+    df_GenDie_Last_Nday=B.join(df_GenDie_Last_Nday)
+
+    #写到文件夹中
+    df_GenDie_Last_Nday.to_excel(All_Output_Path+Pic_Latest_Nday_GenDie_Output_File+'_'+str(Last_Nday)+'_Days.xls')
+    df_GenDie_Last_Nday.to_excel(Backup_path+'GenDie_Latest_'+str(Last_Nday)+'_Days-'+local_date+'.xls')
+
+    #跟涨操作，输出前N个交易日的操作情况；保存为html文件
+    f=open(All_Output_Path+Pic_Latest_Nday_GenZhang_Output_File+'_'+str(Last_Nday)+'_Days.html','w')
+
+    print >>f,write_2_html_part_1
+    print >>f,'\n'
+    #输出eCharts的x坐标日期
+    Date_A = list(df_GenZhang_Last_Nday['Date'])
+    print >>f,'Date_A=',Date_A
+
+    #输出标题
+    Title_Latest_Date='\'GenZhang Last NDays Latest:'+df_GenZhang_Last_Nday.ix[df['Date'].index[-1]]['Date']+'\\n'+BiaoDi_Name+'\''
+    print >>f,'Latest_Date=',Title_Latest_Date
+    print >>f,'\n'
+
+    #输出要展示的变量名称
+    #例如
+    #var_0= 'GengDie_JiaQiang_ZongJi(20%)'
+    #var_1 = 'GengDie_JiaQiang_ZongJi(25%)'
+    #var_2 = 'GengDie_JiaQiang_ZongJi(30%)'
+    var_temp='\''+df_GenZhang_Last_Nday.columns[1]+'\''
+    print >>f,'var_0=',var_temp
+
+    for i in range(1,len(df_GenZhang_Last_Nday.columns)-1):
+        var_temp='\''+df_GenZhang_Last_Nday.columns[i+1]+'\''
+        print >>f,'var_%s'%i,'=',var_temp
+
+    print >>f,'\n'
+
+    #输出变量的具体数值
+    #例如
+    #data_0= [0.0, 0.0, 0.0]
+    #data_1 = [0.0, 0.0, 0.0]
+    #data_2 = [0.0, 0.0, 0.0]
+    data_temp=list(df_GenZhang_Last_Nday.ix[:,1])
+    print >>f,'data_0=',data_temp
+    for i in range(1,len(df_GenZhang_Last_Nday.columns)-1):
+        data_temp=list(df_GenZhang_Last_Nday.ix[:,i+1])
+        print >>f,'data_%s'%i,'=',data_temp
+
+    print >>f,'\n'
+
+    print >>f,write_2_html_part_3
+
+    #输出变量名称的排列关系，纯属为了美观好看
+    #legend: {
+    #
+    #    data: [var_0,var_1,'',var_2,var_3,var_4,] #''表示分行
+    #
+    #},
+    Data_All='['
+    for i in range(0,len(df_GenZhang_Last_Nday.columns)-1):
+        Data_All=Data_All+'var_'+str(i)+','
+        if i==int((len(df_GenZhang_Last_Nday.columns)-1)/2)-1:
+            Data_All=Data_All+'\'\','
+
+    Data_All=Data_All+']'
+    print >>f,'        data:',Data_All
+    print >>f,write_2_html_part_5
+
+    #输出变量名，图形类型，单位，变量对应的数值这4类关系
+    #例如
+    #        {
+    #        name:var_0,
+    #        type:'line',
+    #        stack: 'USD',
+    #        data:data_0
+    #    },
+    #    {
+    #        name:var_1,
+    #        type:'line',
+    #        stack: 'USD',
+    #        data:data_1
+    #    },
+    for i in range(0,len(df_GenZhang_Last_Nday.columns)-1):
+        print >>f,'        {'
+        print >>f,'            name:var_%s,'%i
+        print >>f,'            type:\'line\','
+        print >>f,'            stack: \'USD\','
+        print >>f,'            data:data_%s'%i
+        print >>f,'        },'
+
+    print >>f,write_2_html_part_7
+    f.close()
+
+    #跟跌操作，输出前N个交易日的操作情况；保存为html文件
+    f=open(All_Output_Path+Pic_Latest_Nday_GenDie_Output_File+'_'+str(Last_Nday)+'_Days.html','w')
+
+    print >>f,write_2_html_part_1
+    print >>f,'\n'
+    #输出eCharts的x坐标日期
+    Date_A = list(df_GenDie_Last_Nday['Date'])
+    print >>f,'Date_A=',Date_A
+
+    #输出标题
+    Title_Latest_Date='\'GenDie Last NDays Latest:'+df_GenDie_Last_Nday.ix[df['Date'].index[-1]]['Date']+'\\n'+BiaoDi_Name+'\''
+    print >>f,'Latest_Date=',Title_Latest_Date
+    print >>f,'\n'
+
+    #输出要展示的变量名称
+    #例如
+    #var_0= 'GengDie_JiaQiang_ZongJi(20%)'
+    #var_1 = 'GengDie_JiaQiang_ZongJi(25%)'
+    #var_2 = 'GengDie_JiaQiang_ZongJi(30%)'
+    var_temp='\''+df_GenDie_Last_Nday.columns[1]+'\''
+    print >>f,'var_0=',var_temp
+
+    for i in range(1,len(df_GenDie_Last_Nday.columns)-1):
+        var_temp='\''+df_GenDie_Last_Nday.columns[i+1]+'\''
+        print >>f,'var_%s'%i,'=',var_temp
+
+    print >>f,'\n'
+
+    #输出变量的具体数值
+    #例如
+    #data_0= [0.0, 0.0, 0.0]
+    #data_1 = [0.0, 0.0, 0.0]
+    #data_2 = [0.0, 0.0, 0.0]
+    data_temp=list(df_GenDie_Last_Nday.ix[:,1])
+    print >>f,'data_0=',data_temp
+    for i in range(1,len(df_GenDie_Last_Nday.columns)-1):
+        data_temp=list(df_GenDie_Last_Nday.ix[:,i+1])
+        print >>f,'data_%s'%i,'=',data_temp
+
+    print >>f,'\n'
+
+    print >>f,write_2_html_part_3
+
+    #输出变量名称的排列关系，纯属为了美观好看
+    #legend: {
+    #
+    #    data: [var_0,var_1,'',var_2,var_3,var_4,] #''表示分行
+    #
+    #},
+    Data_All='['
+    for i in range(0,len(df_GenDie_Last_Nday.columns)-1):
+        Data_All=Data_All+'var_'+str(i)+','
+        if i==int((len(df_GenDie_Last_Nday.columns)-1)/2)-1:
+            Data_All=Data_All+'\'\','
+
+    Data_All=Data_All+']'
+    print >>f,'        data:',Data_All
+    print >>f,write_2_html_part_5
+
+    #输出变量名，图形类型，单位，变量对应的数值这4类关系
+    #例如
+    #        {
+    #        name:var_0,
+    #        type:'line',
+    #        stack: 'USD',
+    #        data:data_0
+    #    },
+    #    {
+    #        name:var_1,
+    #        type:'line',
+    #        stack: 'USD',
+    #        data:data_1
+    #    },
+    for i in range(0,len(df_GenDie_Last_Nday.columns)-1):
+        print >>f,'        {'
+        print >>f,'            name:var_%s,'%i
+        print >>f,'            type:\'line\','
+        print >>f,'            stack: \'USD\','
+        print >>f,'            data:data_%s'%i
+        print >>f,'        },'
+
+    print >>f,write_2_html_part_7
+    f.close()
+
+    #复制一份到备份文件夹
+    win32file.CopyFile(All_Output_Path+Pic_Latest_Nday_GenZhang_Output_File+'_'+str(Last_Nday)+'_Days.html',Backup_path+Pic_Latest_Nday_GenZhang_Output_File_Backup+'_'+str(Last_Nday)+'_Days-'+local_date+'.html',0)
+    win32file.CopyFile(All_Output_Path+Pic_Latest_Nday_GenDie_Output_File+'_'+str(Last_Nday)+'_Days.html',Backup_path+Pic_Latest_Nday_GenDie_Output_File_Backup+'_'+str(Last_Nday)+'_Days-'+local_date+'.html',0)
+#-----20160303-----
+
+
