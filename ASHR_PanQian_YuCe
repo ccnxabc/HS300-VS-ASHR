@@ -1,0 +1,41 @@
+import time
+import string
+#import easygui
+#easygui.msgbox("hello world")
+local_date=time.strftime('%Y-%m-%d',time.localtime(time.time()-24*60*60))
+
+import pandas.io.data as web
+#data_yahoo=web.get_data_yahoo('ASHR',local_date,local_date)
+
+#import pandas.io.data as web
+#data_yahoo=web.get_data_yahoo('ASHR','10/30/2015','10/30/2015')
+
+import requests
+
+data_sina=requests.get('http://hq.sinajs.cn/list=sh000300')
+data_stock=data_sina.text.split(',')
+data_stock_Open=data_stock[1]
+data_stock_YesterdayClose=data_stock[2]
+data_stock_Close=data_stock[3]
+data_stock_High=data_stock[4]
+data_stock_Low=data_stock[5]
+data_stock_Date=data_stock[30]
+
+c2=data_stock_Date+','+data_stock_Close+','+data_stock_YesterdayClose+','
+f=open("c:\\9\\HS300-CaoZuoPanDuan.csv","a")
+if data_stock_Close>=data_stock_YesterdayClose:
+    percent=(string.atof(data_stock_High)-string.atof(data_stock_Close))/(string.atof(data_stock_High)-string.atof(data_stock_Low))*100
+    c2=c2+'Zhang,'+ '%.4f'%percent,+','
+else:
+    percent=(string.atof(data_stock_Low)-string.atof(data_stock_Close))/(string.atof(data_stock_High)-string.atof(data_stock_Low))*100
+    c2=c2+'Die,'+ '%.4f'%percent+','
+
+data_sina=requests.get('http://hq.sinajs.cn/list=gb_ashr')
+data_stock=data_sina.text.split(',')
+data_stock_US_Close=data_stock[1]
+price_yuce=string.atof(data_stock_US_Close)*((string.atof(data_stock_Close)-string.atof(data_stock_YesterdayClose))/string.atof(data_stock_YesterdayClose)+1)
+c2=c2+data_stock_US_Close+','+'%.4f'%price_yuce+'\r'
+
+
+f.write(c2)
+f.close()
