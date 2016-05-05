@@ -1,0 +1,185 @@
+import time
+local_date=time.strftime('%Y-%m-%d',time.localtime(time.time()-24*60*60))
+
+import pandas as pd
+import pandas.io.data as web
+#data_yahoo=web.get_data_yahoo('ASHR',local_date,local_date)
+
+#import pandas.io.data as web
+#data_yahoo=web.get_data_yahoo('ASHR','10/30/2015','10/30/2015')
+
+
+import requests
+data_sina=requests.get('http://hq.sinajs.cn/list=sh000300')
+data_stock=data_sina.text.split(',')
+data_stock_Open=data_stock[1]
+data_stock_Close=data_stock[3]
+data_stock_High=data_stock[4]
+data_stock_Low=data_stock[5]
+data_stock_Date=data_stock[30]
+
+data_sina=requests.get('http://hq.sinajs.cn/list=gb_ashr')
+data_stock=data_sina.text.split(',')
+data_stock_US_Open=data_stock[5]
+data_stock_US_Close=data_stock[1]
+data_stock_US_High=data_stock[6]
+data_stock_US_Low=data_stock[7]
+data_stock_US_Volume=data_stock[10]
+
+month=str(data_stock[25]).split(" ")[0]
+day=str(data_stock[25]).split(" ")[1]
+year=time.strftime('%Y')
+
+data_stock_US_date_string=year+" "+month+" "+day
+xxx=time.strptime(data_stock_US_date_string,"%Y %b %d")
+data_stock_US_date=time.strftime("%Y-%m-%d",xxx)
+
+df=pd.read_csv("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv")
+length=len(df['Date'])
+former_day=df['Date'].ix[length-1]
+
+if str(former_day)!=str(data_stock_US_date) and str(former_day)!=str(data_stock_Date) and str(data_stock_US_date)==str(data_stock_Date):
+    #Plan to get data at moring 8:00-8:59,but FAIL! Yahoo CAN NOT repond.
+    #c2=data_stock_Date+','+str(data_yahoo.Open[0])+','+str(data_yahoo.Close[0])+','+str(data_yahoo.High[0])+','+str(data_yahoo.Low[0])+','+str(data_yahoo.Volume[0])+',-,'+data_stock_Open+','+data_stock_Close+','+data_stock_High+','+data_stock_Low+'\r'
+
+    #20160225修订
+    #c2=data_stock_Date+','+data_stock_US_Open+','+data_stock_US_High+','+data_stock_US_Low+','+data_stock_US_Close+','+data_stock_US_Volume+',-,'+data_stock_Open+','+data_stock_Close+','+data_stock_High+','+data_stock_Low+'\r'
+    c2=data_stock_Date+','+data_stock_US_Open+','+data_stock_US_High+','+data_stock_US_Low+','+data_stock_US_Close+','+data_stock_US_Volume+',-,'+data_stock_Open+','+data_stock_High+','+data_stock_Low+','+data_stock_Close+'\r'
+
+
+    #f=open("c:\\9\\20151107.csv","a")
+    f=open("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv","a")
+    f.write(c2)
+    f.close()
+
+
+data_sina=requests.get('http://hq.sinajs.cn/list=gb_chad')
+data_stock=data_sina.text.split(',')
+data_stock_US_Open=data_stock[5]
+data_stock_US_Close=data_stock[1]
+data_stock_US_High=data_stock[6]
+data_stock_US_Low=data_stock[7]
+data_stock_US_Volume=data_stock[10]
+
+month=str(data_stock[25]).split(" ")[0]
+day=str(data_stock[25]).split(" ")[1]
+year=time.strftime('%Y')
+
+data_stock_US_date_string=year+" "+month+" "+day
+xxx=time.strptime(data_stock_US_date_string,"%Y %b %d")
+data_stock_US_date=time.strftime("%Y-%m-%d",xxx)
+
+df=pd.read_csv("c:\\wzr\\PyStock\\CHAD-HS300\\CHAD-HS300.csv")
+length=len(df['Date'])
+former_day=df['Date'].ix[length-1]
+
+if str(former_day)!=str(data_stock_US_date) and str(former_day)!=str(data_stock_Date) and str(data_stock_US_date)==str(data_stock_Date):
+    #因为是反向ETF CHAD，收盘价和开盘价故意互调位置
+    c2=data_stock_Date+','+data_stock_US_Close+','+data_stock_US_High+','+data_stock_US_Low+','+data_stock_US_Open+','+data_stock_US_Volume+',-,'+data_stock_Open+','+data_stock_High+','+data_stock_Low+','+data_stock_Close+'\r'
+
+    f=open("c:\\wzr\\PyStock\\CHAD-HS300\\CHAD-HS300.csv","a")
+    f.write(c2)
+    f.close()
+
+#后期计划直接针对单个文件进行文件进行跟踪，以免标的改变时候又要不断变化
+#FXI
+data_sina=requests.get('http://hq.sinajs.cn/list=gb_fxi')
+data_stock=data_sina.text.split(',')
+data_stock_US_Open=data_stock[5]
+data_stock_US_Close=data_stock[1]
+data_stock_US_High=data_stock[6]
+data_stock_US_Low=data_stock[7]
+data_stock_US_Volume=data_stock[10]
+
+month=str(data_stock[25]).split(" ")[0]
+day=str(data_stock[25]).split(" ")[1]
+year=time.strftime('%Y')
+
+data_stock_US_date_string=year+" "+month+" "+day
+xxx=time.strptime(data_stock_US_date_string,"%Y %b %d")
+data_stock_US_date=time.strftime("%Y-%m-%d",xxx)
+
+df=pd.read_csv("c:\\wzr\\PyStock\\FXI\\FXI.csv")
+length=len(df['Date'])
+former_day=df['Date'].ix[length-1]
+
+if str(former_day)!=str(data_stock_US_date):
+    c2=data_stock_US_date+','+data_stock_US_Open+','+data_stock_US_High+','+data_stock_US_Low+','+data_stock_US_Close+','+data_stock_US_Volume+',-'+'\r'
+    f=open("c:\\wzr\\PyStock\\FXI\\FXI.csv","a")
+    f.write(c2)
+    f.close()
+
+#Short CHAD!!!
+data_sina=requests.get('http://hq.sinajs.cn/list=gb_chad')
+data_stock=data_sina.text.split(',')
+data_stock_US_Open=data_stock[5]
+data_stock_US_Close=data_stock[1]
+data_stock_US_High=data_stock[6]
+data_stock_US_Low=data_stock[7]
+data_stock_US_Volume=data_stock[10]
+
+month=str(data_stock[25]).split(" ")[0]
+day=str(data_stock[25]).split(" ")[1]
+year=time.strftime('%Y')
+
+data_stock_US_date_string=year+" "+month+" "+day
+xxx=time.strptime(data_stock_US_date_string,"%Y %b %d")
+data_stock_US_date=time.strftime("%Y-%m-%d",xxx)
+
+df=pd.read_csv("c:\\wzr\\PyStock\\CHAD\\CHAD.csv")
+length=len(df['Date'])
+former_day=df['Date'].ix[length-1]
+
+if str(former_day)!=str(data_stock_US_date):
+    # Short CHAD!!!
+    c2=data_stock_US_date+','+data_stock_US_Close+','+data_stock_US_High+','+data_stock_US_Low+','+data_stock_US_Open+','+data_stock_US_Volume+',-'+'\r'
+    f=open("c:\\wzr\\PyStock\\CHAD\\CHAD.csv","a")
+    f.write(c2)
+    f.close()
+
+#ASHR
+data_sina=requests.get('http://hq.sinajs.cn/list=gb_ashr')
+data_stock=data_sina.text.split(',')
+data_stock_US_Open=data_stock[5]
+data_stock_US_Close=data_stock[1]
+data_stock_US_High=data_stock[6]
+data_stock_US_Low=data_stock[7]
+data_stock_US_Volume=data_stock[10]
+
+month=str(data_stock[25]).split(" ")[0]
+day=str(data_stock[25]).split(" ")[1]
+year=time.strftime('%Y')
+
+data_stock_US_date_string=year+" "+month+" "+day
+xxx=time.strptime(data_stock_US_date_string,"%Y %b %d")
+data_stock_US_date=time.strftime("%Y-%m-%d",xxx)
+
+df=pd.read_csv("c:\\wzr\\PyStock\\ASHR\\ASHR.csv")
+length=len(df['Date'])
+former_day=df['Date'].ix[length-1]
+
+if str(former_day)!=str(data_stock_US_date):
+    c2=data_stock_US_date+','+data_stock_US_Open+','+data_stock_US_High+','+data_stock_US_Low+','+data_stock_US_Close+','+data_stock_US_Volume+',-'+'\r'
+    f=open("c:\\wzr\\PyStock\\ASHR\\ASHR.csv","a")
+    f.write(c2)
+    f.close()
+
+
+#HS300
+data_sina=requests.get('http://hq.sinajs.cn/list=sh000300')
+data_stock=data_sina.text.split(',')
+data_stock_Open=data_stock[1]
+data_stock_Close=data_stock[3]
+data_stock_High=data_stock[4]
+data_stock_Low=data_stock[5]
+data_stock_Date=data_stock[30]
+
+df=pd.read_csv("c:\\wzr\\PyStock\\HS300\\HS300.csv")
+length=len(df['Date'])
+former_day=df['Date'].ix[length-1]
+
+if str(former_day)!=str(data_stock_Date):
+    c2=data_stock_Date+','+data_stock_Open+','+data_stock_High+','+data_stock_Low+','+data_stock_Close+'\r'
+    f=open("c:\\wzr\\PyStock\\HS300\\HS300.csv","a")
+    f.write(c2)
+    f.close()
