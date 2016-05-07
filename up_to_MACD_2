@@ -1,0 +1,2139 @@
+# coding=utf-8
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pandas import Series, DataFrame
+import time
+import xlwt
+# 复制文件
+import os
+import win32file
+import tempfile
+
+# 0:初始值
+# 1:买入操作，最后以一笔卖出终结本次交易
+# -1：卖出操作，最后以一笔买入终结本次交易
+deal = 0
+#存储deal的结果
+Series_deal=pd.Series([float(0)])
+# 通过5个连续数据来选择其中的MACD最大数值
+SELECT_TOP_MACD_Num = 5
+
+# 在一次完整交易中子交易的标识，比如说一直买1，买2，买3，sell_CiShu就是1，2，3
+sell_CiShu = 0
+buy_CiShu = 0
+buy_point=0
+sell_point=0
+
+print_count=1
+Gain_count=0
+
+sell_stock=pd.Series([float(0)])
+sell_ZhiFu=pd.Series([float(0)])
+sell_pri=pd.Series([float(0)])
+sell_YongJing=pd.Series([float(0)])
+sell_Date=pd.Series([float(0)])
+sell_tag=pd.Series([float(0)])
+sell_count_in_day=pd.Series([float(0)])
+sell_sub_count=pd.Series([float(0)])
+# 在一次完整交易中卖出/买进股票的总计
+sell_stock_sum=pd.Series([float(0)])
+sell_ZhiFu_sum=pd.Series([float(0)])
+sell_YongJing_sum=pd.Series([float(0)])
+sell_average_pri=pd.Series([float(0)])
+
+
+buy_stock=pd.Series([float(0)])
+buy_ZhiFu=pd.Series([float(0)])
+buy_pri=pd.Series([float(0)])
+buy_YongJing=pd.Series([float(0)])
+buy_Date=pd.Series([float(0)])
+buy_tag=pd.Series([float(0)])
+buy_count_in_day=pd.Series([float(0)])
+buy_sub_count=pd.Series([float(0)])
+buy_stock_sum=pd.Series([float(0)])
+buy_ZhiFu_sum=pd.Series([float(0)])
+buy_YongJing_sum=pd.Series([float(0)])
+buy_average_pri=pd.Series([float(0)])
+#记录单次交易的所有信息
+df_final_print=pd.DataFrame()
+
+#记录出现TOP MACD的时间以及TOP数值，方便以后统计MACD与指数的关系
+This_deal_TOP_MACD_point = pd.Series([float(0)])
+This_deal_TOP_MACD_point_Date = pd.Series([float(0)])
+This_deal_TOP_MACD4Pri= pd.Series([float(0)])
+This_deal_TOP_MACD_tag= pd.Series([float(0)])
+This_deal_TOP_MACD_Count = 0
+# 记录MACD最低点的次数及情况
+This_deal_LOW_MACD_point = pd.Series([float(0)])
+This_deal_LOW_MACD_point_Date = pd.Series([float(0)])
+This_deal_LOW_MACD4Pri= pd.Series([float(0)])
+This_deal_LOW_MACD_tag= pd.Series([float(0)])
+This_deal_LOW_MACD_Count = 0
+
+MACD_KEY=0
+
+# 是否开启盈利模式
+# 默认情况下先为0，确保不要对以前的数据产生干扰
+#YinLi_KaiQi_KEY = 0
+YinLi_KaiQi_KEY = 1
+
+# 定义每万元,4天内利息系数定义；如果不心痛利息的话，该项为0即可
+LiXi_XiShu = (2.5 / 10000) * 4
+
+# 定义每次买入/卖出的股票量，作为基准，类似宏定义
+DingYi_DanWeiLiang = 10000
+
+# 均线是否形成趋势的判断结果
+JunXian_QuShi_Compare_group = pd.Series([float(0)])
+
+# 佣金点数
+DianShu = 0.00025
+
+# 表示昨日收盘价，用来大致分析今天走势的判断
+Yesterday_End = -99
+
+# 为0表示算法对MACD高度的限制进行判断
+TOP_Level_NO_Strict = 0
+# 顺势而为开关
+ShunShiErWei_KEY = 1
+# 涨幅超过0.5%算是强势，低于-0.5%算是弱势
+ShunShiErWei_FaZhi = 0.005
+
+#是否开启反手检测开关-----?
+select_fanzhuan_macd_ok=0
+Series_select_fanzhuan_macd_ok=pd.Series([float(0)])
+
+# 反手检测开关
+MACD_FangShou_JianCe_KEY=1
+# 反手检测结果初始值为0
+JieGuo_JunXian_QuShi_JianCe=0
+
+fanzhuan_macd_meiyou_pingcang = 0
+FanZhuan_deal_has_trade=0
+
+
+#'算法为1，每次成交相同的量
+#'算法为2，上次成交量*2
+suanfa = 2
+
+#只需初始化一次，贯穿算法全程；每次交易不需要重新初始化
+BiJiao_BeiLi_MACD_TOP_BiaoZhun_point=0
+BiJiao_BeiLi_MACD_LOW_BiaoZhun_point=0
+
+Series_JieGuo_MACD_JiaGe_BeiLi=pd.Series([float(0)])
+
+Series_select_top_macd_ok=pd.Series([float(0)])
+
+
+'''
+def JunXian_QuShi_JianCe():
+    # 3个时间单位的MA_x斜率，这是经验值，需要不断测试。现在给出的0.3是大致给出的数
+    Min_MA5_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+    Min_MA10_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+    Min_MA20_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+    Min_MA60_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+
+    # 5个时间单位的MA_x斜率，这是经验值，需要不断测试。现在给出的0.3是大致给出的数
+    Min_MA5_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+    Min_MA10_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+    Min_MA20_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+    Min_MA60_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+
+    # 只有前一个的数据是固定下来的，这也是为了后续实时分析做准备
+    # 实时数据，当新的一分钟粒度开始时，数据是不稳定的，根本不知道最终的蜡烛图是什么样子，但是上一个粒度的蜡烛图已经是固定的了
+    i = Latest_Day - 1
+
+    # '数据入栈更新
+    # For i = 0 To (JunXian_QuShi_Compare_group_Num - 2)
+    # JunXian_QuShi_Compare_group(i) = JunXian_QuShi_Compare_group(i + 1)
+    # Next i
+
+    # 卖出交易，但是均线出现了并列向上，且从上到下分别是MA5，MA10，MA20，反手信号置为1
+    # If deal = -1 And (MA_x(0) > MA_x(1) And MA_x(1) > MA_x(2) And MA_x(2) > MA_x(3)) Then'
+    # If deal = -1 And (MA5_GROUP(MA_group_NUM - 1) > MA10_GROUP(MA_group_NUM - 1) And MA10_GROUP(MA_group_NUM - 1) > MA20_GROUP(MA_group_NUM - 1) And MA20_GROUP(MA_group_NUM - 1) > MA60_GROUP(MA_group_NUM - 1)) Then
+    # 既然成为常态化检测，可以去掉deal的条件
+    # 20150705修改MA60为MA30,看下能否提高检测反转的敏感度
+    if (MA5_GROUP[i] > MA10_GROUP[i] and MA10_GROUP[i] > MA20_GROUP[i] and MA20_GROUP[i] > MA30_GROUP[i]):
+        if ShangZhang_XiaJiang_XieLv_MA5_3day_group[i] >= Min_MA5_Fanzhuan_xielv_3_danwei and \
+                        ShangZhang_XiaJiang_XieLv_MA10_3day_group[
+                            i] >= Min_MA10_Fanzhuan_xielv_3_danwei and ShangZhang_XiaJiang_XieLv_MA20_3day_group(
+                i) >= Min_MA20_Fanzhuan_xielv_3_danwei:
+            JunXian_QuShi_Compare_group[i] = 1
+        else:
+            JunXian_QuShi_Compare_group[i] = 0
+    else:
+        if (MA5_GROUP[i] < MA10_GROUP[i] and MA10_GROUP[i] < MA20_GROUP[i] and MA20_GROUP[i] < MA30_GROUP[i]):
+            if ShangZhang_XiaJiang_XieLv_MA5_3day_group[i] <= -Min_MA5_Fanzhuan_xielv_3_danwei and \
+                            ShangZhang_XiaJiang_XieLv_MA10_3day_group[
+                                i] <= -Min_MA10_Fanzhuan_xielv_3_danwei and ShangZhang_XiaJiang_XieLv_MA20_3day_group(
+                    i) <= -Min_MA20_Fanzhuan_xielv_3_danwei:
+                JunXian_QuShi_Compare_group[i] = -1
+            else:
+                JunXian_QuShi_Compare_group[i] = 0
+        else:
+            JunXian_QuShi_Compare_group[i] = 0
+'''
+
+# 买入后，卖信号还未出现，但是趋势线下跌已形成；并且MA60的3天斜率为负；反手出现，JieGuo_JunXian_QuShi_JianCe = -1
+# 卖入后，买信号还未出现，但是趋势线上涨已形成；并且MA60的3天斜率为正；反手出现，JieGuo_JunXian_QuShi_JianCe = 1
+def JunXian_QuShi_ChengLi_JianCe(i,MACD_KEY):
+    global JunXian_QuShi_Compare_group
+    global ShangZhang_XiaJiang_XieLv_MA60_3day_group
+    global  JieGuo_JunXian_QuShi_JianCe
+
+    # 在连续JunXian_QuShi_Num个周期内，均线比较结果均为1或-1，则反转成立
+    JunXian_QuShi_Num = 3
+    sum_JunXian_QuShi_Compare = 0
+
+    for tmp in range(0, JunXian_QuShi_Num):
+        sum_JunXian_QuShi_Compare = sum_JunXian_QuShi_Compare + JunXian_QuShi_Compare_group[i-1-tmp]
+
+    if deal == -1 and sum_JunXian_QuShi_Compare == JunXian_QuShi_Num and ShangZhang_XiaJiang_XieLv_MA60_3day_group[i - 1] >= 0:
+        JieGuo_JunXian_QuShi_JianCe = 1
+        # 这一步非常关键
+        MACD_KEY = 3
+
+    if deal == 1 and sum_JunXian_QuShi_Compare == -JunXian_QuShi_Num and ShangZhang_XiaJiang_XieLv_MA60_3day_group[i - 1] <= 0:
+        JieGuo_JunXian_QuShi_JianCe = -1
+        # 这一步非常关键
+        MACD_KEY = 3
+
+    return JieGuo_JunXian_QuShi_JianCe,MACD_KEY
+
+
+def FanZhuan_deal(i,Today_open):
+    global LiXi_XiShu
+    global DianShu
+    global print_count
+
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global suanfa
+
+    global deal
+    global JieGuo_JunXian_QuShi_JianCe
+    global MACD_KEY
+
+
+    FanZhuan_deal_has_trade=0
+
+    # '由买转卖
+    if deal == 1 and JieGuo_JunXian_QuShi_JianCe == -1 and (MACD_KEY == 1 or MACD_KEY == 3):
+        if sell_stock_sum[0]==0:
+            # 交易性质反转
+            if (suanfa == 1):
+                how_many_2_sell=buy_stock[buy_stock.index[-1]]
+            elif (suanfa == 2):
+                how_many_2_sell= buy_stock[buy_stock.index[-1]]*2
+
+            what_price_2_sell=Today_open
+            sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,2)
+
+            '''
+            sell_ZhiFu[sell_CiShu] = sell_stock[sell_CiShu] * 2 * Today_open
+            sell_pri[sell_CiShu] = Today_open
+            sell_YongJing[sell_CiShu] = max(sell_ZhiFu[sell_CiShu] * DianShu, 5)
+            sell_Date[sell_CiShu] = df.index[i]
+            sell_tag[sell_CiShu] = 'REV2SEL'
+            sell_count_in_day[sell_CiShu] = print_count
+            sell_sub_count[sell_CiShu] = sell_CiShu
+
+            sell_stock_sum = sell_stock.cumsum()
+            sell_ZhiFu_sum = sell_ZhiFu.cumsum()
+            sell_YongJing_sum = sell_YongJing.cumsum()
+            '''
+            # 之前是买入，然后再卖出，最后再买入
+            # 得到金钱为+，消耗金钱为-
+            # -买入支付的总数-买入支付的总数的利息-买入支付的佣金+反手卖出得到的现金-反手卖出得到的现金的利息-反手卖出的佣金-【最后买入平均价】*股数-【最后买入平均价】*股数*佣金点数>=0
+            # 【最后买入平均价】<=（反手卖出得到的现金-反手卖出得到的现金的利息-反手卖出的佣金-买入支付的总数-买入支付的总数的利息-买入支付的佣金）/(股数*(1+佣金点数))
+            # 需要修订的地方在这里---------------------------------------------------------------------------------------------------------->减之前买的佣金------------------->减之前买的总成本------------------------------------------------------------------->确定是1不是2!
+            '''
+            sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum[sell_ZhiFu_sum.index[-1]] - sell_YongJing_sum[sell_YongJing_sum.index[-1]] - buy_ZhiFu_sum[buy_ZhiFu_sum.index[-1]] -
+                                            buy_YongJing_sum[buy_YongJing_sum.index[-1]] - buy_ZhiFu_sum[buy_ZhiFu_sum.index[-1]] * LiXi_XiShu) / (
+                                           (1 + DianShu + LiXi_XiShu) * sell_stock_sum[sell_stock_sum.index[-1]] * 1)
+          '''
+            #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest-sell_ZhiFu_sum_latest*LiXi_XiShu) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum[sell_stock_sum.index[-1]] * 1)
+            #sell_average_pri[sell_CiShu]= ((np.float64(sell_ZhiFu_sum.tail(1))-np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu)-(np.float64(buy_ZhiFu_sum.tail(1))+np.float64(buy_YongJing_sum.tail(1))+np.float64(buy_ZhiFu_sum.tail(1))*LiXi_XiShu))/(sell_stock_sum*(1+DianShu+LiXi_XiShu))
+            sell_average_pri[sell_CiShu]=((how_many_2_sell* what_price_2_sell-how_many_2_sell* what_price_2_sell*DianShu-how_many_2_sell* what_price_2_sell*LiXi_XiShu)-(np.float64(buy_ZhiFu_sum.tail(1))+np.float64(buy_YongJing_sum.tail(1))+np.float64(buy_ZhiFu_sum.tail(1))*LiXi_XiShu))/(sell_stock_sum*(1+DianShu+LiXi_XiShu))
+            sell_CiShu = sell_CiShu + 1
+            # 属性跟随反手变化
+            deal=-1
+
+            FanZhuan_deal_has_trade=-1
+            return FanZhuan_deal_has_trade,deal
+        else:
+            return FanZhuan_deal_has_trade,deal
+
+
+    # '由卖转买
+    elif deal == -1 and JieGuo_JunXian_QuShi_JianCe == 1 and (MACD_KEY == 2 or MACD_KEY == 3):
+        if buy_stock_sum[0]==0:
+            # 交易性质反转
+            if (suanfa == 1):
+                how_many_2_buy=sell_stock[sell_stock.index[-1]]
+            elif (suanfa == 2):
+                how_many_2_buy=sell_stock[sell_stock.index[-1]]*2
+
+            what_price_2_buy=Today_open
+            buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,2)
+
+            '''
+            buy_ZhiFu[buy_CiShu] = buy_stock[buy_CiShu] * 2 * Today_open
+            buy_pri[buy_CiShu] = Today_open
+            buy_YongJing[buy_CiShu] = max(buy_ZhiFu[buy_CiShu] * DianShu, 5)
+            buy_Date[buy_CiShu] = df.index[i]
+            buy_tag[buy_CiShu] = 'REV2BUY'
+            buy_count_in_day[buy_CiShu] = print_count
+            buy_sub_count[buy_CiShu] = buy_CiShu
+
+            buy_stock_sum = buy_stock.cumsum()
+            buy_ZhiFu_sum = buy_ZhiFu.cumsum()
+            buy_YongJing_sum = buy_YongJing.cumsum()
+            '''
+            # '之前是卖出，然后再买入，最后再卖出
+            # '得到金钱为+，消耗金钱为-
+            # '卖出得到的现金-卖出支付的佣金-反手买入支付的总数-反手买入支付的总数的利息-反手买入支付的佣金+【最后卖出平均价】*股数 - 【最后卖出平均价】*股数*佣金点数>=0
+            # '【最后卖出平均价】>=(卖出支付的佣金+反手买入支付的总数+反手买入支付的总数的利息+反手买入支付的佣金-卖出得到的现金)/(股数*(1-佣金点数))
+            '''
+            buy_average_pri[buy_CiShu] = (buy_ZhiFu[buy_CiShu] + buy_YongJing_sum[buy_CiShu] + buy_ZhiFu_sum[
+                buy_CiShu] * LiXi_XiShu - (sell_ZhiFu_sum[sell_CiShu - 1] - sell_ZhiFu_sum[
+                sell_CiShu - 1] * DianShu)) / (buy_stock_sum[buy_CiShu] * (1 - DianShu))
+            '''
+            #buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest + buy_YongJing_sum_latest + buy_ZhiFu_sum_latest * LiXi_XiShu) / (buy_stock_sum[buy_stock_sum.index[-1]] * (1 - DianShu-LiXi_XiShu))
+
+            #反手后的平均价格非常绕，使用全局变量操作，这样直白些
+            #buy_average_pri[buy_CiShu] = ((np.float64(buy_ZhiFu_sum.tail(1))+np.float64(buy_YongJing_sum.tail(1))+np.float64(buy_ZhiFu_sum.tail(1))*LiXi_XiShu)-(np.float64(sell_ZhiFu_sum.tail(1))-np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu))  / (np.float64(buy_stock_sum.tail(1)) * (1 - DianShu-LiXi_XiShu))
+            buy_average_pri[buy_CiShu] = ((how_many_2_buy*what_price_2_buy+how_many_2_buy*what_price_2_buy*DianShu+how_many_2_buy*what_price_2_buy*LiXi_XiShu)-(np.float64(sell_ZhiFu_sum.tail(1))-np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu))  / (np.float64(buy_stock_sum.tail(1)) * (1 - DianShu-LiXi_XiShu))
+
+            #buy_average_pri[buy_CiShu] = ((np.float64(buy_ZhiFu_sum.tail(1))+np.float64(buy_YongJing_sum.tail(1))+np.float64(buy_ZhiFu_sum.tail(1))*LiXi_XiShu)-(-np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu))  / (np.float64(buy_stock_sum.tail(1)) * (1 - DianShu-LiXi_XiShu))
+            #buy_average_pri[buy_CiShu] = ((np.float64(buy_ZhiFu_sum.tail(1))+np.float64(buy_YongJing_sum.tail(1))+how_many_2_buy*what_price_2_buy*LiXi_XiShu)-(-np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu))  / (np.float64(buy_stock_sum.tail(1)) * (1 - DianShu-LiXi_XiShu))
+
+            buy_CiShu = buy_CiShu + 1
+            # 属性跟随反手变化
+            deal=1
+
+            FanZhuan_deal_has_trade=1
+            return FanZhuan_deal_has_trade,deal
+        else:
+            return FanZhuan_deal_has_trade,deal
+    else:
+        return FanZhuan_deal_has_trade,deal
+
+def MACD_KEY_Yu_PanDuan(i):
+
+    global ShunShiErWei_KEY
+    global deal
+
+    global MA5_GROUP
+    global MA10_GROUP
+    global MA20_GROUP
+    global MA60_GROUP
+
+    global ShangZhang_XiaJiang_XieLv_MA5_3day_group
+    global ShangZhang_XiaJiang_XieLv_MA10_3day_group
+    global ShangZhang_XiaJiang_XieLv_MA20_3day_group
+
+    global MACD_KEY
+
+    if ShunShiErWei_KEY == 1 and deal == 0:  # 20150705修订，确保先由MA5，MA10，Ma20，MA30均线系统确定买还是卖；再由当前价格和开盘价对比，确定是买还是卖
+        if (MA5_GROUP[i] > MA10_GROUP[i] and MA10_GROUP[i] > MA20_GROUP[i] and MA20_GROUP[i] > MA60_GROUP[i]):
+            if ShangZhang_XiaJiang_XieLv_MA5_3day_group[i] >= Min_MA5_Fanzhuan_xielv_3_danwei and \
+                            ShangZhang_XiaJiang_XieLv_MA10_3day_group[i] >= Min_MA10_Fanzhuan_xielv_3_danwei and \
+                            ShangZhang_XiaJiang_XieLv_MA20_3day_group[i] >= Min_MA20_Fanzhuan_xielv_3_danwei:
+                MACD_KEY = 2
+            else:
+                MACD_KEY = 3
+        if (MA5_GROUP[i] < MA10_GROUP[i] and MA10_GROUP[i] < MA20_GROUP[i] and MA20_GROUP[i] < MA60_GROUP[i]):
+            if ShangZhang_XiaJiang_XieLv_MA5_3day_group[i] <= -Min_MA5_Fanzhuan_xielv_3_danwei and \
+                            ShangZhang_XiaJiang_XieLv_MA10_3day_group[i] <= -Min_MA10_Fanzhuan_xielv_3_danwei and \
+                            ShangZhang_XiaJiang_XieLv_MA20_3day_group[i] <= -Min_MA20_Fanzhuan_xielv_3_danwei:
+                MACD_KEY = 1
+            else:
+                MACD_KEY = 3
+        # 以上条件不满足在根据当前价格和开盘价对比，确定是买还是卖
+        # 20150823 当包含00:00:00表示这是以天为单位的数据，连期指、港股的收市时间都包括了;
+        # 不包含00:00:00则表示是（1/5/10）分钟，小时等非天数粒度
+        if MACD_KEY == 0 and Time_split != "00:00:00":
+            if Today_end / Yesterday_End - 1 >= ShunShiErWei_FaZhi:
+                MACD_KEY = 2
+            if Today_end / Yesterday_End - 1 <= -ShunShiErWei_FaZhi:
+                MACD_KEY = 1
+            else:
+                MACD_KEY = 3
+        # '20150823 00:00表示这是以天为单位的数据，暂未想到控制买卖信号的条件，暂定为3（可卖可买)
+        if MACD_KEY == 0 and Time_split == "00:00:00": #需要修改???---已修改
+            MACD_KEY = 3
+
+    elif ShunShiErWei_KEY == 0 and deal == 0:
+        # MACD_KEY是开关按钮
+        # 1：只计算卖出点
+        # 2：只计算买入点
+        # 3：买卖点均计算
+        MACD_KEY = 3
+
+    return MACD_KEY
+
+# 这个所谓的MACD的最高点/最低点是指...(难以表达）
+# 以下只是检测两种情况:MACD为正，最高；MACD为负，最低；
+# 当MACD从正最高到正最低，然后又升上去；从负数最低到负数最高，然后又跌下去；这两种情况不在这里检测，在fanshou（反手）进行检测
+def Select_Top_Low_Macd():
+    global SELECT_TOP_MACD_Num
+    global TOP_Level_NO_Strict
+    global MACD_MACD
+
+    # 选择最高MACD点
+    select_top_macd_ok = 0
+    # 表示有足够强的力量进行做多/做空
+    TOP_Level = 0.015
+
+    Middle_Value = MACD_MACD[i - SELECT_TOP_MACD_Num / 2 - 1]
+    # 当TOP_Level_NO_Strict为0，对高度进行限制；而高度又达不到指定阀值，abs(MACD_MACD[i])>=TOP_Level不成立，select_top_macd_ok = 0
+    if abs(Middle_Value) >= TOP_Level or TOP_Level_NO_Strict:
+        for tmp_4 in range(1, SELECT_TOP_MACD_Num / 2+1):
+            # 假设从5个中找MACD最值，到index=i的数据时，确认i-3为中心，然后比较i，i-1，i-2，i-4,i-5
+            if Middle_Value * MACD_MACD[i - tmp_4] >= 0:
+                if abs(Middle_Value) >= abs(MACD_MACD[i - tmp_4]):
+                    select_top_macd_ok = 1
+                else:
+                    select_top_macd_ok = 0
+                    break
+            else:
+                select_top_macd_ok = 1
+
+            if Middle_Value * MACD_MACD[i - (SELECT_TOP_MACD_Num / 2 + 1) - tmp_4] >= 0:
+                if abs(Middle_Value) >= abs(MACD_MACD[i - (SELECT_TOP_MACD_Num / 2 + 1) - tmp_4]):
+                    select_top_macd_ok = 1
+                else:
+                    select_top_macd_ok = 0
+                    break
+            else:
+                select_top_macd_ok = 1
+    else:
+        select_top_macd_ok = 0
+
+    return select_top_macd_ok,Middle_Value
+
+
+def MACD_BUY_OR_SELL(i,Time_split,select_top_macd_ok,Middle_Value,MACD_KEY):
+    global This_deal_TOP_MACD_point
+    global This_deal_TOP_MACD_point_Date
+    global This_deal_TOP_MACD_Count
+    global This_deal_TOP_MACD4Pri
+
+    global This_deal_LOW_MACD_point
+    global This_deal_LOW_MACD_point_Date
+    global This_deal_LOW_MACD_Count
+    global This_deal_LOW_MACD4Pri
+
+    global buy_point
+    global sell_point
+
+    global MACD_MACD
+    global df
+
+    global Close
+
+    global SELECT_TOP_MACD_Num
+
+    global MACD_FangShou_JianCe_KEY
+    global MACD_HengPan_JianCe_KEY
+    # 对于MACD_10，因为乘以10，因此这里是0.050，否则则是0.005
+    TOP_Level = 0.015
+    # 当买进/卖出的价格至少比上一次交易超出MIN_STEP之后才执行，避免在同一价位积累大量筹码
+    MIN_STEP = 0.0025
+
+
+
+    # 定义每次买入/卖出的股票量，作为基准，类似宏定义
+    DingYi_DanWeiLiang = 10000
+
+    # 补仓算法
+    # 算法为1，每次成交相同的量
+    # 算法为2，每次成交上一次成交量的2倍
+    suanfa = 2
+
+
+    # 买卖点出现，开始检测MACD是否会穿不透0轴，横盘
+    MACD_HengPan_JianCe_KEY = 0
+
+
+    # 设置时间范围，10:00前，14:30后不新开仓操作；已开仓的继续操作
+    if Time_split >= "10:00:00" and Time_split <= "14:30:00":
+        Time_KEY = 1
+    else:
+        Time_KEY = 0
+    # 确认买卖点。正数最大柱为卖点
+    # 增加这个(MACD_KEY = 1 Or MACD_KEY = 3)，是为了保证在MACD_KEY为2的时候，This_deal_TOP_MACD_point继续入栈
+    if select_top_macd_ok == 1 and MACD_MACD[i] > 0 and Time_KEY == 1 and deal != 1 and (MACD_KEY == 1 or MACD_KEY == 3) or Day_LiDu!=0:
+        if sell_CiShu == 0:
+            sell_point = 1
+            MACD_FangShou_JianCe_KEY = 1
+            MACD_HengPan_JianCe_KEY = 1
+            This_deal_TOP_MACD_point[This_deal_TOP_MACD_Count] = Middle_Value
+            This_deal_TOP_MACD_point_Date[This_deal_TOP_MACD_Count] = df.index[i]
+            #当前蜡烛图出现后，都是判断前一个已形成的蜡烛图的状态
+            This_deal_TOP_MACD4Pri[This_deal_TOP_MACD_Count]=Close[i-1-SELECT_TOP_MACD_Num/2]
+            This_deal_TOP_MACD_tag[This_deal_TOP_MACD_Count]="SELL"
+            This_deal_TOP_MACD_Count = This_deal_TOP_MACD_Count + 1
+        else:
+            # 完善，限制每次卖出的价格幅度，以免在某一相同价位积累大量筹码
+            # 但是只要反转，只要有高点出现就卖，不管高点的长度
+            if (Today_end >= sell_pri[sell_CiShu - 1] * (1 + MIN_STEP)):
+                sell_point = 1
+                MACD_FangShou_JianCe_KEY = 1
+                MACD_HengPan_JianCe_KEY = 1
+                This_deal_TOP_MACD_point[This_deal_TOP_MACD_Count] = Middle_Value
+                This_deal_TOP_MACD_point_Date[This_deal_TOP_MACD_Count] = df.index[i]
+                #当前蜡烛图出现后，都是判断前一个已形成的蜡烛图的状态
+                This_deal_TOP_MACD4Pri[This_deal_TOP_MACD_Count]=Close[i-1-SELECT_TOP_MACD_Num/2]
+                This_deal_TOP_MACD_tag[This_deal_TOP_MACD_Count]="SELL"
+                This_deal_TOP_MACD_Count = This_deal_TOP_MACD_Count + 1
+    # 确认买卖点。负数最大柱为买点
+    elif select_top_macd_ok == 1 and MACD_MACD[i] < 0 and Time_KEY == 1 and deal != -1 and ( MACD_KEY == 2 or MACD_KEY == 3) or Day_LiDu!=0:
+        if buy_CiShu == 0:
+            buy_point = 1
+            MACD_FangShou_JianCe_KEY = 1
+            MACD_HengPan_JianCe_KEY = 1
+            This_deal_LOW_MACD_point[This_deal_LOW_MACD_Count] = Middle_Value
+            This_deal_LOW_MACD_point_Date[This_deal_LOW_MACD_Count] = df.index[i]
+            This_deal_LOW_MACD4Pri[This_deal_LOW_MACD_Count]=Close[i-1-SELECT_TOP_MACD_Num/2]
+            This_deal_LOW_MACD_tag[This_deal_LOW_MACD_Count]="BUY"
+            This_deal_LOW_MACD_Count = This_deal_LOW_MACD_Count + 1
+        else:
+            # 完善，限制每次买进的价格幅度，以免在某一相同价位积累大量筹码
+            # 但是只要反转，只要有低点出现就买，不管低点的长度
+            if Today_end <= buy_pri[buy_CiShu - 1] * (1 - MIN_STEP):
+                buy_point = 1
+                MACD_FangShou_JianCe_KEY = 1
+                MACD_HengPan_JianCe_KEY = 1
+                This_deal_LOW_MACD_point[This_deal_LOW_MACD_Count] = Middle_Value
+                This_deal_LOW_MACD_point_Date[This_deal_LOW_MACD_Count] = df.index[i]
+                This_deal_LOW_MACD4Pri[This_deal_LOW_MACD_Count]=Close[i-1-SELECT_TOP_MACD_Num/2]
+                This_deal_LOW_MACD_tag[This_deal_LOW_MACD_Count]="BUY"
+                This_deal_LOW_MACD_Count = This_deal_LOW_MACD_Count + 1
+    return buy_point,sell_point, MACD_FangShou_JianCe_KEY,MACD_HengPan_JianCe_KEY
+    # deal不为0表示已在交易过程中，MACD_FangShou_JianCe_KEY = 1 表示已经开启"反手"检测-----???
+    #if deal != 0 and MACD_FangShou_JianCe_KEY == 1 and select_fanzhuan_macd_ok == 0:
+    #    MACD_FangShou_JianCe(i,MACD_FangShou_JianCe_KEY)
+
+def Base_Sell(i,how_many_2_sell,what_price_2_sell,lianxi):
+    global LiXi_XiShu
+    global DianShu
+    global print_count
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global  print_count
+    #平仓
+    PING_CANG=1
+    FAN_ZHUAN=2
+
+    sell_stock[sell_CiShu]=how_many_2_sell
+    sell_pri[sell_CiShu] = what_price_2_sell
+    sell_ZhiFu[sell_CiShu] = sell_stock[sell_CiShu] * sell_pri[sell_CiShu]
+
+    sell_YongJing[sell_CiShu] =max(sell_ZhiFu[sell_CiShu] * DianShu, 5)
+    sell_Date[sell_CiShu] = df.index[i]
+    if lianxi==FAN_ZHUAN:
+        sell_tag[sell_CiShu] = 'REV2SELL'
+    else:
+        sell_tag[sell_CiShu] = 'SELL'
+    sell_count_in_day[sell_CiShu] = print_count
+    if lianxi==PING_CANG or lianxi==FAN_ZHUAN:
+        sell_sub_count[sell_CiShu] = np.float64(buy_sub_count.tail(1))+1+sell_CiShu
+        sell_stock_sum = sell_stock.cumsum()-np.float64(buy_stock_sum.tail(1))
+        sell_YongJing_sum = sell_YongJing.cumsum()+np.float64(buy_YongJing_sum.tail(1))
+        #sell_ZhiFu_sum = sell_ZhiFu.cumsum()-sell_YongJing.cumsum()-np.float64(buy_ZhiFu_sum.tail(1))
+        sell_ZhiFu_sum = sell_ZhiFu.cumsum()-np.float64(buy_ZhiFu_sum.tail(1))
+    else:
+        sell_sub_count[sell_CiShu]=sell_CiShu
+        sell_stock_sum = sell_stock.cumsum()
+        sell_YongJing_sum = sell_YongJing.cumsum()
+        #sell_ZhiFu_sum = sell_ZhiFu.cumsum()-sell_YongJing.cumsum()
+        sell_ZhiFu_sum = sell_ZhiFu.cumsum()
+
+    '''
+    sell_stock_sum = sell_stock.cumsum()-np.float64(buy_stock_sum.tail(1))
+    sell_YongJing_sum = sell_YongJing.cumsum()+np.float64(buy_YongJing_sum.tail(1))
+    sell_ZhiFu_sum = sell_ZhiFu.cumsum()-sell_YongJing.cumsum()
+    '''
+
+    # 最后数值的两种表示方法
+    # sell_ZhiFu_sum[sell_ZhiFu_sum.index[-1]],
+    # sell_YongJing_sum[sell_YongJing_sum.index[-1]],
+    # sell_stock_sum[sell_stock_sum.index[-1]]
+    return np.float64(sell_ZhiFu_sum.tail(1)),np.float64(sell_YongJing_sum.tail(1)),np.float64(sell_stock_sum.tail(1))
+
+def Base_Buy(i,how_many_2_buy,what_price_2_buy,lianxi):
+    global LiXi_XiShu
+    global DianShu
+    global print_count
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    PING_CANG=1
+    FAN_ZHUAN=2
+
+    buy_stock[buy_CiShu]=how_many_2_buy
+    buy_pri[buy_CiShu] = what_price_2_buy
+    buy_ZhiFu[buy_CiShu] = buy_stock[buy_CiShu] * buy_pri[buy_CiShu]
+
+    buy_YongJing[buy_CiShu] =max(buy_ZhiFu[buy_CiShu] * DianShu, 5)
+    buy_Date[buy_CiShu] = df.index[i]
+    if lianxi==FAN_ZHUAN:
+        buy_tag[buy_CiShu] = 'REV2BUY'
+    else:
+        buy_tag[buy_CiShu] = 'BUY'
+    buy_count_in_day[buy_CiShu] = print_count
+    '''
+    buy_sub_count[buy_CiShu] = buy_CiShu
+
+    buy_stock_sum = buy_stock.cumsum()
+    buy_YongJing_sum = buy_YongJing.cumsum()
+    buy_ZhiFu_sum = buy_ZhiFu.cumsum()-buy_YongJing.cumsum()
+    '''
+    if lianxi==PING_CANG or lianxi==FAN_ZHUAN:
+        buy_sub_count[buy_CiShu] = np.float64(sell_sub_count.tail(1))+1+buy_CiShu
+        buy_stock_sum = buy_stock.cumsum()-np.float64(sell_stock_sum.tail(1))
+        buy_YongJing_sum = buy_YongJing.cumsum()+np.float64(sell_YongJing_sum.tail(1))
+        #buy_LiXi_sum
+        #buy_ZhiFu_sum = buy_ZhiFu.cumsum()+buy_YongJing.cumsum()-np.float64(sell_ZhiFu_sum.tail(1))
+        #buy_ZhiFu_sum = buy_ZhiFu.cumsum()-np.float64(sell_ZhiFu_sum.tail(1))
+        buy_ZhiFu_sum = buy_ZhiFu.cumsum()
+    else:
+        buy_sub_count[buy_CiShu] = buy_CiShu
+        buy_stock_sum = buy_stock.cumsum()
+        buy_YongJing_sum = buy_YongJing.cumsum()
+        #buy_ZhiFu_sum = buy_ZhiFu.cumsum()+buy_YongJing.cumsum()
+        buy_ZhiFu_sum = buy_ZhiFu.cumsum()
+
+    return np.float64(buy_ZhiFu_sum.tail(1)), np.float64(buy_YongJing_sum.tail(1)), np.float64(buy_stock_sum.tail(1))
+
+def Normal_BUY_or_SELL(i,buy_point, sell_point,MACD_KEY,Today_open):
+    global deal
+    global suanfa
+
+    global DingYi_DanWeiLiang
+    global LiXi_XiShu
+    global DianShu
+
+    global sell_stock_sum
+    global sell_average_pri
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global buy_stock_sum
+    global buy_average_pri
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    #'卖点出现，且控制信号有效时使用
+    if sell_point == 1 and (MACD_KEY == 1 or MACD_KEY == 3):
+        #空的数组的len数值竟然是1，有一个数值的长度也是1！
+        if buy_stock_sum[0] == 0 and sell_stock_sum[0] == 0:  #len(buy_stock_sum) == 1 and buy_stock_sum[0]==0 and len(sell_stock_sum) == 1 and buy_stock_sum[0]==0
+            deal = -1
+            how_many_2_sell= DingYi_DanWeiLiang
+            what_price_2_sell=Today_open
+            sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,0)
+            #'20150626修改
+            # 计算卖出平均价格
+            sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest-sell_ZhiFu_sum_latest* LiXi_XiShu) / ((1 + DianShu+LiXi_XiShu ) * sell_stock_sum_latest)
+            #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest-sell_ZhiFu_sum_latest* LiXi_XiShu) / ((1 + DianShu ) * sell_stock_sum_latest)
+            #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum_latest)
+            #...ZhiFu_sum_latest 已减佣金
+            #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum_latest)
+            sell_CiShu = sell_CiShu + 1
+        elif deal==-1:
+            #'算法为1，每次成交相同的量
+            if (suanfa == 1) :
+                how_many_2_sell= DingYi_DanWeiLiang
+            #'算法为2，上次成交量*2
+            elif (suanfa == 2) :
+                how_many_2_sell= np.float64(sell_stock.tail(1))*2
+
+            what_price_2_sell=Today_open
+            sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,0)
+
+            #继续卖操作；这里buy_CiShu不为0证明这里的卖是反手后的操作。这里的平均价格是当想买进（依然借钱算利息）平仓时，需要用什么价格才能保本
+            if buy_CiShu != 0:
+                sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest - sell_ZhiFu_sum_latest*LiXi_XiShu- np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_YongJing_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu) / ((1 + DianShu+LiXi_XiShu) * sell_stock_sum_latest)
+                #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest  - buy_ZhiFu_sum[ - 1] - buy_YongJing_sum[- 1] - buy_ZhiFu_sum[ - 1] * LiXi_XiShu) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum_latest)
+            #继续卖操作，这里的平均价格是当想买进（依然借钱算利息）平仓时，需要用什么价格才能保本
+            if buy_CiShu == 0:
+                sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest-sell_ZhiFu_sum_latest*LiXi_XiShu) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum_latest)
+                #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest - sell_YongJing_sum_latest) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum_latest)
+                #sell_average_pri[sell_CiShu] = (sell_ZhiFu_sum_latest) / ((1 + DianShu + LiXi_XiShu) * sell_stock_sum_latest)
+
+            sell_CiShu = sell_CiShu + 1
+
+        # '恢复原值，重新等待买卖点出现
+        sell_point = 0
+        return buy_point,sell_point,deal
+
+
+    #买点出现，且控制信号有效时使用
+    elif buy_point == 1 and (MACD_KEY == 2 or MACD_KEY == 3):
+        if buy_stock_sum[0] == 0 and sell_stock_sum[0] == 0:
+            deal = 1
+            how_many_2_buy= DingYi_DanWeiLiang
+            what_price_2_buy=Today_open
+            buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,0)
+            #  '20150626确认不变
+            #...ZhiFu_sum_latest 已加上佣金
+            buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest * (1 + LiXi_XiShu) + buy_YongJing_sum_latest) / ((1 - DianShu-LiXi_XiShu) * buy_stock_sum_latest)
+            #buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest * (1 + LiXi_XiShu)) / ((1 - DianShu) * buy_stock_sum_latest)
+            buy_CiShu = buy_CiShu + 1
+        elif deal==1:
+            #'算法为1，每次成交相同的量
+            if (suanfa == 1) :
+                how_many_2_buy= DingYi_DanWeiLiang
+            #'算法为2，上次成交量*2
+            elif (suanfa == 2) :
+                how_many_2_buy= np.float64(buy_stock.tail(1))*2
+
+            what_price_2_buy=Today_open
+            buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,0)
+            #'20150626修改
+            #'(1)卖-（2）反手买-(3)卖
+            #'现在求的就是buy_average_pri_array就是求(3)卖出的价格，使得"收支"平衡
+            #'消耗金钱为负数，得到金钱为正数
+            #'买都是指融资买入；卖都是指融券卖出
+            #'(1)卖所得-(1)卖手续费-(2)反手买总额-(2)反手买手续-(2)反手买利息（因为融资）+(3)卖所得-(3)卖手续费>=0
+            if sell_CiShu != 0:
+                buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest * (1 + LiXi_XiShu) + buy_YongJing_sum_latest - (np.float64(sell_ZhiFu_sum.tail(1))- np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu-np.float(sell_YongJing_sum.tail(1)))) / ((1 - DianShu-LiXi_XiShu) * buy_stock_sum_latest)
+                #buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest * (1 + LiXi_XiShu)  - (np.float64(sell_ZhiFu_sum.tail(1))- np.float(sell_YongJing_sum.tail(1)))) / ((1 - DianShu) * buy_stock_sum_latest)
+            if sell_CiShu == 0:
+                buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest * (1 + LiXi_XiShu) + buy_YongJing_sum_latest) / ((1 - DianShu-LiXi_XiShu) * buy_stock_sum_latest)
+                #buy_average_pri[buy_CiShu] = (buy_ZhiFu_sum_latest * (1 + LiXi_XiShu)) / ((1 - DianShu) * buy_stock_sum_latest)
+
+            buy_CiShu = buy_CiShu + 1
+
+        # '恢复原值，重新等待买卖点出现
+        buy_point = 0
+        return buy_point,sell_point,deal
+
+#=====终于盼到保本价格，进行平仓=====
+def PingCang_DaDao_PingJun_JiaGe(i,sell_point, buy_point, deal,FanZhuan_deal_has_trade,Today_Min, Today_Max,Today_end):
+    global YinLi_KaiQi_KEY
+    global fanzhuan_macd_meiyou_pingcang
+    global DanTian_QingLing_KEY
+
+    global DianShu
+    global LiXi_XiShu
+
+    global buy_stock_sum
+    global buy_average_pri
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global sell_stock_sum
+    global sell_average_pri
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global print_count
+    global Gain_count
+    #=====Part 4 寻找已卖点为主的交易平均价格，终于盼到保本价格，进行平仓=====
+    #这个是为了之前的510300当日回转套取资金，到了保本价格就平仓；
+    # 或是盈利开启YinLi_KaiQi_KEY为1，但是一直无法平仓fanzhuan_macd_meiyou_pingcang == 1，这个时候也用这个函数进行平仓
+    if sell_point == 0 and buy_point == 0 and deal == -1 and FanZhuan_deal_has_trade == 0 and YinLi_KaiQi_KEY == 0:
+        # 遇到心理保本价位,平仓
+        if (np.float64(sell_average_pri.tail(1)) >= Today_Min and np.float64(sell_average_pri.tail(1)) <= Today_Max) or (Time_split=="15:00:00" and DanTian_QingLing_KEY==1):
+            if np.float64(sell_average_pri.tail(1)) >= Today_Min and np.float64(sell_average_pri.tail(1)) <= Today_Max:
+                what_price_2_buy=np.float64(sell_average_pri.tail(1))
+            elif Time_split=="15:00:00":
+                what_price_2_buy=Today_end
+
+            #最后一笔是前面的反向交易，前面是卖，最后是买
+            how_many_2_buy= np.float64(sell_stock_sum.tail(1))
+
+            #最后一笔是前面的反向交易，如果前面是卖，最后是买
+            temp_last_cost = np.float64(sell_stock_sum.tail(1)) * np.float64(sell_average_pri.tail(1))
+            #'最后是盈利还是亏损呢？
+
+           #这里假设买卖都是借钱，通过融资买入的对冲融券卖出的，得到额外金额；因此都带利息
+            #                 第1行：|开头卖出得到的钱|          减|开头卖出的佣金|              减|开头卖出的利息|
+            #                 第2行：减|最后平仓买入消耗的钱|    减|最后平仓买入的佣金|          减|最后平仓买入的利息|
+            temp_gain_or_loss = np.float64(sell_ZhiFu_sum.tail(1)) - np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1)) *LiXi_XiShu\
+                                - temp_last_cost -max(temp_last_cost * DianShu, 5)- temp_last_cost*LiXi_XiShu
+            if temp_gain_or_loss > -1:
+                Gain_count = Gain_count + 1
+            #打印之前的卖操作记录
+            write_sell_to_file(print_count)
+
+            buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,1)
+
+            #打印这次的买平仓操作记录
+            write_buy_to_file(print_count)
+
+            final_write_trade_to_file(print_count)
+
+            print_count = print_count + 1
+            DanCiJiaoYiJieSu_QingLing()
+
+            '''
+            if Time_split=="15:00:00":
+                write_Statics_to_file(i,print_count,Gain_count)
+                DangTian_Statics_QingLing()
+          '''
+            return 1
+
+    #=====Part 5 寻找已买点为主的交易平均价格，终于盼到保本价格，进行平仓=====
+    elif sell_point ==0 and buy_point == 0 and deal == 1 and FanZhuan_deal_has_trade == 0 and YinLi_KaiQi_KEY == 0 :
+        if (np.float64(buy_average_pri.tail(1)) >= Today_Min and np.float64(buy_average_pri.tail(1)) <= Today_Max) or (Time_split=="15:00:00" and DanTian_QingLing_KEY==1):
+
+            if (np.float64(buy_average_pri.tail(1)) >= Today_Min and np.float64(buy_average_pri.tail(1)) <= Today_Max):
+                what_price_2_sell=np.float64(buy_average_pri.tail(1))
+            elif Time_split=="15:00:00":
+                what_price_2_sell=Today_end
+
+            #最后一笔是前面的反向交易，前面是买，最后是卖
+            how_many_2_sell= np.float64(buy_stock_sum.tail(1))
+
+            #最后一笔是前面的反向交易，如果前面是买，最后是卖
+            temp_last_cost = np.float64(buy_stock_sum.tail(1)) * np.float64(buy_average_pri.tail(1))
+            #'最后是盈利还是亏损呢？
+            #'卖出得到的钱，没看错，是buy_stock...；减掉"卖出的佣金"；减掉"之前购买的消耗"；减掉"利息"；减掉"之前购买消耗的佣金"
+
+            #这里假设买卖都是借钱，通过融资买入的对冲融券卖出的，得到额外金额；因此都带利息
+            #                 第1行：|最后平仓卖出得到的钱|          减|最后平仓卖出的佣金|      减|最后平仓卖出的利息|
+            #                 第2行：减|开头买入消耗的钱|            减|开头买入的佣金|          减|开头买入的利息|
+            temp_gain_or_loss = temp_last_cost - max(temp_last_cost * DianShu, 5)-temp_last_cost*LiXi_XiShu\
+                                - np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_YongJing_sum.tail(1))- np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu
+            if temp_gain_or_loss > -1:
+                Gain_count = Gain_count + 1
+
+            #打印之前的买操作记录
+            write_buy_to_file(print_count)
+
+            sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,1)
+            #打印这次的买平仓操作记录
+            write_sell_to_file(print_count)
+            final_write_trade_to_file(print_count)
+
+            print_count = print_count + 1
+            DanCiJiaoYiJieSu_QingLing()
+            '''
+            if Time_split=="15:00:00":
+                write_Statics_to_file(i,print_count,Gain_count)
+                DangTian_Statics_QingLing()
+            '''
+            return 2
+    else:
+        return -1
+
+'''
+def write_buy_to_file(print_count):
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+    global buy_average_pri
+
+    df_print=pd.DataFrame()
+    df_print['Count']=buy_count_in_day
+    df_print['SubCount'] =buy_sub_count
+    df_print['Tag'] =buy_tag
+    df_print['Date'] =buy_Date
+    df_print['Stock_Num']=buy_stock
+    df_print['Stock_Pri']=buy_pri
+    df_print['ZhiFu_NET']=-buy_ZhiFu
+    df_print['YongJing']=-buy_YongJing
+    df_print['LiXi']=-buy_ZhiFu*LiXi_XiShu
+    df_print['Actual Get/Paid(-)']=-(buy_ZhiFu+buy_YongJing)-buy_ZhiFu*LiXi_XiShu
+    df_print['Position_cumsum']=buy_stock_sum
+    df_print['Actual Get/Paid(-)_cumsum']=pd.Series(df_print['Actual Get/Paid(-)']).cumsum()
+    df_print['YongJing_cumsum']=-buy_YongJing_sum
+    df_print['LiXi_cumsum']=(-sell_ZhiFu*LiXi_XiShu).cumsum()
+    df_print['Ave_Pri']=buy_average_pri
+
+    #不支持续写xls文件（包括CSV,文本等都不支持?）
+    #将文件之前的内容读出来
+    df_tmp=pd.read_excel("C:\\9\\output-123.xls")
+    #因为columns都是一样的，根据情况进行上下拼接
+    if len(df_tmp)==0:
+        df_print_x=df_print
+    else:
+        df_print_x=df_tmp.append(df_print)
+    #拼接后的内容重新写入文件
+    df_print_x.to_excel("C:\\9\\output-123.xls")
+
+def write_sell_to_file(print_count):
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+    global sell_average_pri
+
+    df_print=pd.DataFrame()
+    df_print['Count']=sell_count_in_day
+    df_print['SubCount'] =sell_sub_count
+    df_print['Tag'] =sell_tag
+    df_print['Date'] =sell_Date
+    df_print['Stock_Num']=-sell_stock
+    df_print['Stock_Pri']=sell_pri
+    df_print['ZhiFu_NET']=sell_ZhiFu
+    df_print['YongJing']=-sell_YongJing
+    df_print['LiXi']=-sell_ZhiFu*LiXi_XiShu
+    df_print['Actual Get/Paid(-)']=sell_ZhiFu-sell_YongJing-sell_ZhiFu*LiXi_XiShu
+    df_print['Position_cumsum']=-sell_stock_sum
+    df_print['Actual Get/Paid(-)_cumsum']=pd.Series(df_print['Actual Get/Paid(-)']).cumsum()
+    df_print['YongJing_cumsum']=-sell_YongJing_sum
+    df_print['LiXi_cumsum']=(-sell_ZhiFu*LiXi_XiShu).cumsum()
+    df_print['Ave_Pri']=sell_average_pri
+
+    #不支持续写xls文件（包括CSV,文本等都不支持?）
+    #将文件之前的内容读出来
+    df_tmp=pd.read_excel("C:\\9\\output-123.xls")
+    #因为columns都是一样的，根据情况进行上下拼接
+    if len(df_tmp)==0:
+        df_print_x=df_print
+    else:
+        df_print_x=df_tmp.append(df_print)
+    #拼接后的内容重新写入文件
+    df_print_x.to_excel("C:\\9\\output-123.xls")
+'''
+
+def write_buy_to_file(print_count):
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+    global buy_average_pri
+
+    global df_final_print
+
+    df_print=pd.DataFrame()
+    df_print['Count']=buy_count_in_day
+    df_print['SubCount'] =buy_sub_count
+    df_print['Tag'] =buy_tag
+    df_print['Date'] =buy_Date
+    df_print['Stock_Num']=buy_stock
+    df_print['Stock_Pri']=buy_pri
+    df_print['ZhiFu_NET']=-buy_ZhiFu
+    df_print['YongJing']=-buy_YongJing
+    df_print['LiXi']=-buy_ZhiFu*LiXi_XiShu
+    df_print['Actual Get/Paid(-)']=-(buy_ZhiFu+buy_YongJing)-buy_ZhiFu*LiXi_XiShu
+    df_print['Position_cumsum']=buy_stock_sum
+    df_print['Ave_Pri']=buy_average_pri
+
+    if len(df_final_print)==0:
+        df_final_print=df_print
+    else:
+        df_final_print=df_final_print.append(df_print)
+
+
+def write_sell_to_file(print_count):
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+    global sell_average_pri
+
+    global df_final_print
+
+    df_print=pd.DataFrame()
+    df_print['Count']=sell_count_in_day
+    df_print['SubCount'] =sell_sub_count
+    df_print['Tag'] =sell_tag
+    df_print['Date'] =sell_Date
+    df_print['Stock_Num']=-sell_stock
+    df_print['Stock_Pri']=sell_pri
+    df_print['ZhiFu_NET']=sell_ZhiFu
+    df_print['YongJing']=-sell_YongJing
+    df_print['LiXi']=-sell_ZhiFu*LiXi_XiShu
+    df_print['Actual Get/Paid(-)']=sell_ZhiFu-sell_YongJing-sell_ZhiFu*LiXi_XiShu
+    df_print['Position_cumsum']=-sell_stock_sum
+    df_print['Ave_Pri']=sell_average_pri
+
+    if len(df_final_print)==0:
+        df_final_print=df_print
+    else:
+        df_final_print=df_final_print.append(df_print)
+
+
+
+def final_write_trade_to_file(print_count):
+    global df_final_print
+
+    df_final_print['Actual Get/Paid(-)_cumsum']=pd.Series(df_final_print['Actual Get/Paid(-)']).cumsum()
+    df_final_print['YongJing_cumsum']=pd.Series(df_final_print['YongJing']).cumsum()
+    df_final_print['LiXi_cumsum']=pd.Series(df_final_print['LiXi']).cumsum()
+
+    #不支持续写xls文件（包括CSV,文本等都不支持?）
+    #将文件之前的内容读出来
+    df_tmp=pd.read_excel("C:\\9\\output-123.xls")
+    #因为columns都是一样的，根据情况进行上下拼接
+    if len(df_tmp)==0:
+        df_print_x=df_final_print
+    else:
+        df_print_x=df_tmp.append(df_final_print)
+    #拼接后的内容重新写入文件
+    df_print_x.to_excel("C:\\9\\output-123.xls")
+
+
+def DanCiJiaoYiJieSu_QingLing():
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+    global sell_average_pri
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+    global buy_average_pri
+
+    #记录单次交易的所有信息
+    global df_final_print
+
+    global MACD_FangShou_JianCe_KEY
+    global JieGuo_JunXian_QuShi_JianCe
+    global select_fanzhuan_macd_ok
+
+    global MACD_HengPan_JianCe_KEY
+    global MACD_HengPan_JianCe_JieGuo
+
+    global This_deal_TOP_MACD_Count
+    global This_deal_TOP_MACD_point
+    global This_deal_TOP_MACD4Pri
+    global This_deal_TOP_MACD_point_Date
+
+    global This_deal_LOW_MACD_Count
+    global This_deal_LOW_MACD_point
+    global This_deal_LOW_MACD4Pri
+    global This_deal_LOW_MACD_point_Date
+
+    global TOP_Level_NO_Strict
+
+    global fanzhuan_macd_meiyou_pingcang
+
+    global deal
+
+    global MACD_KEY
+
+    global FanZhuan_deal_has_trade
+
+
+    sell_CiShu=0
+
+    sell_stock=pd.Series([float(0)])
+    sell_ZhiFu=pd.Series([float(0)])
+    sell_pri = pd.Series([float(0)])
+    sell_YongJing=pd.Series([float(0)])
+    sell_Date=pd.Series([float(0)])
+    sell_tag=pd.Series([float(0)])
+    sell_count_in_day=pd.Series([float(0)])
+    sell_sub_count=pd.Series([float(0)])
+    sell_stock_sum=pd.Series([float(0)])
+    sell_ZhiFu_sum=pd.Series([float(0)])
+    sell_YongJing_sum=pd.Series([float(0)])
+    sell_average_pri=pd.Series([float(0)])
+
+    buy_CiShu=0
+
+    buy_stock=pd.Series([float(0)])
+    buy_ZhiFu=pd.Series([float(0)])
+    buy_pri = pd.Series([float(0)])
+    buy_YongJing=pd.Series([float(0)])
+    buy_Date=pd.Series([float(0)])
+    buy_tag=pd.Series([float(0)])
+    buy_count_in_day=pd.Series([float(0)])
+    buy_sub_count=pd.Series([float(0)])
+    buy_stock_sum=pd.Series([float(0)])
+    buy_ZhiFu_sum=pd.Series([float(0)])
+    buy_YongJing_sum=pd.Series([float(0)])
+    buy_average_pri=pd.Series([float(0)])
+
+    #记录单次交易的所有信息
+    df_final_print=pd.DataFrame()
+
+    deal = 0
+
+    # 'MACD反手检测KEY以及结果值置0
+    MACD_FangShou_JianCe_KEY = 0
+    JieGuo_JunXian_QuShi_JianCe = 0
+    select_fanzhuan_macd_ok = 0
+
+    MACD_HengPan_JianCe_KEY = 0
+    MACD_HengPan_JianCe_JieGuo = 0
+
+    #This_deal_TOP_MACD_Count=0
+    #This_deal_TOP_MACD_point= pd.Series([float(0)])
+    #This_deal_TOP_MACD_point_Date= pd.Series([float(0)])
+    #This_deal_TOP_MACD4Pri=pd.Series([float(0)])
+
+
+    #This_deal_LOW_MACD_Count=0
+    #This_deal_LOW_MACD_point= pd.Series([float(0)])
+    #This_deal_LOW_MACD_point_Date= pd.Series([float(0)])
+    #This_deal_LOW_MACD4Pri= pd.Series([float(0)])
+
+    #'恢复对MACD高度的限制
+    TOP_Level_NO_Strict = 0
+
+    fanzhuan_macd_meiyou_pingcang = 0
+
+    FanZhuan_deal_has_trade=0
+
+
+# 出现反手之后,遇到保本价格，平仓
+def PingCang_FanShou_BaoBen_and_ShouPan_PingCang(i,sell_point,buy_point,deal,FanZhuan_deal_has_trade,Today_Min,Today_Max,Today_end):
+
+    global DanTian_QingLing_KEY
+
+    global YinLi_KaiQi_KEY
+    global fanzhuan_macd_meiyou_pingcang
+
+    global DianShu
+    global LiXi_XiShu
+
+    global buy_stock_sum
+    global buy_average_pri
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global sell_stock_sum
+    global sell_average_pri
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global print_count
+    global Gain_count
+
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+    global sell_average_pri
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+    global buy_average_pri
+
+    #=====Part 8 反手后，以卖点为主,遇到交易平均价格，进行平仓=====
+    #deal=-1并且JieGuo_JunXian_QuShi_JianCe = -1，表示deal之前是1的，然后反手后deal变成-1.顺序是买-卖-买(平仓)
+    if sell_point == 0 and buy_point == 0 and deal == -1 and FanZhuan_deal_has_trade == -1 and YinLi_KaiQi_KEY == 0:
+        #遇到心理价位,"平仓"
+        if (np.float64(sell_average_pri.tail(1)) >= Today_Min and np.float64(sell_average_pri.tail(1)) <= Today_Max) or (Time_split=="15:00:00" and DanTian_QingLing_KEY==1):
+
+            #打印之前的买操作记录
+            write_buy_to_file(print_count)
+            #打印反手卖操作记录
+            write_sell_to_file(print_count)
+
+            #最后一笔是前面的反向交易.这里前面是卖出，因此这里是买入，买入的数量是最近卖出的总数，买入的价格是卖出的平均价格。有点绕~~
+            how_many_2_buy= np.float64(sell_stock_sum.tail(1))
+            if np.float64(sell_average_pri.tail(1)) >= Today_Min and np.float64(sell_average_pri.tail(1)) <= Today_Max:
+                what_price_2_buy=np.float64(sell_average_pri.tail(1))
+            elif Time_split=="15:00:00":
+                what_price_2_buy=Today_end
+            temp_last_cost = how_many_2_buy * what_price_2_buy
+            #最后是盈利还是亏损呢？
+            #                   |反手卖出后得到的钱总数|   减|反手卖出后消耗的手续费总数|   减|最后一次买进平仓消耗的钱| 减|最后一次买进平仓消耗的手续费|       20150625修订    //减|之前买进消耗的钱|,因为反转的时候已经减过一次   减|之前买进的手续费|         减|之前买进消耗的钱（融资)的利息|                 减|最后平仓买进消耗的钱（融资)的利息|
+            #temp_gain_or_loss = np.float64(sell_ZhiFu_sum.tail(1)) - np.float64(sell_YongJing_sum.tail(1)) - (temp_last_cost + max(temp_last_cost * DianShu, 5)) - np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_YongJing_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu - temp_last_cost * LiXi_XiShu
+
+            #这里假设买卖都是借钱，通过融资买入的对冲融券卖出的，得到额外金额；因此都带利息
+            #                 第1行：|反手卖出得到的钱|              减|反手卖出的佣金|          减|反手卖出的利息|
+            #                 第2行：减|开头买入消耗的钱|            减|开头买入的佣金|          减|开头买入的利息|
+            #                 第3行：减|最后买入消耗的钱|            减|最后买入的佣金|          减|最后买入的利息|
+            temp_gain_or_loss = np.float64(sell_ZhiFu_sum.tail(1)) - np.float64(sell_ZhiFu_sum.tail(1))*DianShu - np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu \
+                                - np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_YongJing_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu\
+                                -temp_last_cost - max(temp_last_cost * DianShu, 5)-temp_last_cost * LiXi_XiShu
+            if temp_gain_or_loss > -1:
+                Gain_count = Gain_count + 1
+
+            #将之前的买操作的寄存器清零
+
+            buy_stock=pd.Series([float(0)])
+            buy_ZhiFu=pd.Series([float(0)])
+            buy_pri = pd.Series([float(0)])
+            buy_YongJing=pd.Series([float(0)])
+            buy_Date=pd.Series([float(0)])
+            buy_tag=pd.Series([float(0)])
+            buy_count_in_day=pd.Series([float(0)])
+            buy_sub_count=pd.Series([float(0)])
+            buy_stock_sum=pd.Series([float(0)])
+            buy_ZhiFu_sum=pd.Series([float(0)])
+            buy_YongJing_sum=pd.Series([float(0)])
+            buy_average_pri=pd.Series([float(0)])
+
+            buy_CiShu=0
+
+            #最后一笔是前面的反向交易，前面是卖，最后是买
+            buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,1)
+
+            #打印这次的买平仓操作记录
+            write_buy_to_file(print_count)
+            final_write_trade_to_file(print_count)
+
+            print_count = print_count + 1
+            DanCiJiaoYiJieSu_QingLing()
+
+            '''
+            if Time_split=="15:00:00":
+                write_Statics_to_file(i,print_count,Gain_count)
+                DangTian_Statics_QingLing()
+                '''
+            return 1
+        else:
+            return -1
+
+    #=====Part 9 反手后，以买点为主,遇到交易平均价格，进行平仓=====
+    #deal=1并且JieGuo_JunXian_QuShi_JianCe = 1，表示deal之前是-1的，然后反手后deal变成1.顺序是卖-买-卖
+    if sell_point == 0 and buy_point == 0 and deal == 1 and FanZhuan_deal_has_trade == 1 and YinLi_KaiQi_KEY == 0 :
+        #'遇到心理价位,"平仓"
+        if (np.float64(buy_average_pri.tail(1)) >= Today_Min and np.float64(buy_average_pri.tail(1)) <= Today_Max) or (Time_split=="15:00:00"and DanTian_QingLing_KEY==1):
+
+            #最后一笔是前面的反向交易，前面是买，最后是卖
+            how_many_2_sell= np.float64(buy_stock_sum.tail(1))
+            if np.float64(buy_average_pri.tail(1)) >= Today_Min and np.float64(buy_average_pri.tail(1)) <= Today_Max:
+                what_price_2_sell=np.float64(buy_average_pri.tail(1))
+            elif Time_split=="15:00:00":
+                what_price_2_sell=Today_end
+
+            #打印之前的卖操作记录
+            write_sell_to_file(print_count)
+            #打印反手买操作记录
+            write_buy_to_file(print_count)
+
+            #最后一笔是前面的反向交易，如果前面是买，最后是卖；
+            #这里前面是买入，因此这里是卖出。卖出的数量是最近买进的总数，卖出的价格是买进的平均价格。有点绕~~
+            temp_last_cost =  how_many_2_sell * what_price_2_sell
+            #最后是盈利还是亏损呢？
+            #卖出得到的钱，没看错，是buy_stock...；减掉"卖出的佣金"；减掉"之前购买的消耗"；减掉"利息"；减掉"之前购买消耗的佣金"
+            #                |最后卖出得到的钱|减|最后卖出的佣金|                 加|首次卖出得到的钱|    减|首次卖出的佣金|  减|反手买入消耗的钱| 减|反手买入消耗的钱的佣金| 减|反手买入消耗的钱（融资）的利息|
+            #temp_gain_or_loss = temp_last_cost - max(temp_last_cost * DianShu, 5) + np.float64(sell_ZhiFu_sum.tail(1)) - np.float64(sell_YongJing_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_YongJing_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu
+
+            #这里假设买卖都是借钱，通过融资买入的对冲融券卖出的，得到额外金额；因此都带利息
+            #                 第1行：|最后卖出得到的钱|              减|最后卖出的佣金|          减|最后卖出的利息|
+            #                 第2行：加|开头卖出得到的钱|            减|开头卖出的佣金|          减|开头卖出的利息|
+            #                 第3行：减|反转买入消耗的钱|            减|反转买入的佣金|          减|反转买入的利息|
+            temp_gain_or_loss = temp_last_cost - max(temp_last_cost * DianShu, 5) - temp_last_cost*LiXi_XiShu +\
+                                np.float64(sell_ZhiFu_sum.tail(1)) - np.float64(sell_YongJing_sum.tail(1))-np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu \
+                                - np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1))*DianShu - np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu
+            if temp_gain_or_loss > -1:
+                Gain_count = Gain_count + 1
+
+            #将之前的卖操作的寄存器清零
+
+            sell_stock=pd.Series([float(0)])
+            sell_ZhiFu=pd.Series([float(0)])
+            sell_pri = pd.Series([float(0)])
+            sell_YongJing=pd.Series([float(0)])
+            sell_Date=pd.Series([float(0)])
+            sell_tag=pd.Series([float(0)])
+            sell_count_in_day=pd.Series([float(0)])
+            sell_sub_count=pd.Series([float(0)])
+            sell_stock_sum=pd.Series([float(0)])
+            sell_ZhiFu_sum=pd.Series([float(0)])
+            sell_YongJing_sum=pd.Series([float(0)])
+            sell_average_pri=pd.Series([float(0)])
+
+
+            sell_CiShu=0
+
+            #最后一笔是前面的反向交易，前面是买，最后是卖
+            sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,1)
+
+            #打印这次的卖平仓操作记录
+            write_sell_to_file(print_count)
+            final_write_trade_to_file(print_count)
+
+            print_count = print_count + 1
+            DanCiJiaoYiJieSu_QingLing()
+            '''
+            if Time_split=="15:00:00":
+                write_Statics_to_file(i,print_count,Gain_count)
+                DangTian_Statics_QingLing()
+            '''
+            return 2
+        else:
+            return -2
+    else:
+        return -9
+
+# 严格按照纪律执行，买/卖交易遇到卖/买点则平仓，无论盈亏；
+# 以及尾盘强制平仓（到15:00:00还是平仓不了，强行平仓）
+def PingCang_BuGuan_LiRun_and_ShouPan_PingCang(i,sell_point,buy_point,deal,Time_split):
+
+    global DanTian_QingLing_KEY
+
+    global YinLi_KaiQi_KEY
+    global fanzhuan_macd_meiyou_pingcang
+
+    global DianShu
+    global LiXi_XiShu
+
+    global buy_stock_sum
+    global buy_average_pri
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global sell_stock_sum
+    global sell_average_pri
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global print_count
+    global Gain_count
+
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+    global sell_average_pri
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+    global buy_average_pri
+
+    #=====Part 6.卖点为主,追求追高利润为目的，遇到MACD反转select_fanzhuan_macd_ok == 1则进行平仓=====
+    if sell_point == 0 and buy_point == 0 and deal == -1 and ((YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1) or (Time_split=="15:00:00" and DanTian_QingLing_KEY==1)):
+        #难道不盈利就不平仓吗，应该要强制平仓！
+        #最后一笔是前面的反向交易，这里前面是卖，最后是买；
+        how_many_2_buy=np.float64(sell_stock_sum.tail(1))
+        #  对于既满足条件1： sell_point == 0 and buy_point == 0 and deal == -1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0)
+        #  又满足条件2：Time_split=="15:00:00"
+        #  优先匹配条件1，交易价格是开盘价
+        #  当不满足条件1，但满足条件2，强行平仓，交易价格是收盘价
+        if sell_point == 0 and buy_point == 0 and deal == -1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1):
+            what_price_2_buy=Today_open
+        elif Time_split=="15:00:00":
+            what_price_2_buy=Today_end
+        #temp_last_cost = sell_stock_sum[-1] * Today_open
+        temp_last_cost=how_many_2_buy*what_price_2_buy
+        #最后是盈利还是亏损呢？
+
+        #这里假设买卖都是借钱，通过融资买入的对冲融券卖出的，得到额外金额；因此都带利息
+        #                 第1行：|开头卖出得到的钱|              减|开头卖出的佣金|          减|开头卖出的利息|
+        #                 第2行：减|最后买入消耗的钱|            减|最后买入的佣金|          减|最后买入的利息|
+        temp_gain_or_loss = np.float64(sell_ZhiFu_sum.tail(1)) -np.float64(sell_ZhiFu_sum.tail(1))*LiXi_XiShu - np.float64(sell_YongJing_sum.tail(1))\
+                            - temp_last_cost - max(temp_last_cost * DianShu, 5)-temp_last_cost*LiXi_XiShu
+        if temp_gain_or_loss > -1:
+            Gain_count = Gain_count + 1
+
+        #打印之前的卖操作记录
+        write_sell_to_file(print_count)
+
+        #最后一笔是前面的反向交易，前面是卖，最后是买
+        buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,1)
+        #打印这次的买平仓操作记录
+        write_buy_to_file(print_count)
+        final_write_trade_to_file(print_count)
+
+        print_count = print_count + 1
+        DanCiJiaoYiJieSu_QingLing()
+
+        return 1
+
+    if sell_point == 0 and buy_point == 0 and deal == 1 and ((YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1)  or (Time_split=="15:00:00" and DanTian_QingLing_KEY==1)):
+        #难道不盈利就不平仓吗，应该要强制平仓！
+
+        #最后一笔是前面的反向交易，这里前面是买，最后是卖
+        how_many_2_sell= np.float64(buy_stock_sum.tail(1))
+        #  对于既满足条件1：sell_point == 0 and buy_point == 0 and deal == 1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0)
+        #  又满足条件2：Time_split=="15:00:00"
+        #  优先匹配条件1，交易价格是开盘价
+        #  当不满足条件1，但满足条件2，强行平仓，交易价格是收盘价
+        if sell_point == 0 and buy_point == 0 and deal == 1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1):
+            what_price_2_sell=Today_open
+        elif Time_split=="15:00:00":
+            what_price_2_sell=Today_end
+        #temp_last_cost = buy_stock_sum[-1] * Today_open
+        temp_last_cost=how_many_2_sell*what_price_2_sell
+        #最后是盈利还是亏损呢？
+        #卖出得到的钱，没看错，是buy_stock...；减掉"卖出的佣金"；减掉"之前购买的消耗"；减掉"利息"；减掉"之前购买消耗的佣金"
+
+        #这里假设买卖都是借钱，通过融资买入的对冲融券卖出的，得到额外金额；因此都带利息
+        #                 第1行：|最后卖出得到的钱|              减|最后卖出的佣金|          减|最后卖出的利息|
+        #                 第2行：减|开头买入消耗的钱|            减|开头买入的佣金|          减|开头买入的利息|
+        temp_gain_or_loss = temp_last_cost - max(temp_last_cost * DianShu, 5) -temp_last_cost*LiXi_XiShu\
+                            - np.float64(buy_ZhiFu_sum.tail(1))  - np.float64(buy_YongJing_sum.tail(1))- np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu
+
+        if temp_gain_or_loss > -1:
+            Gain_count = Gain_count + 1
+
+        #打印之前的买操作记录
+        write_buy_to_file(print_count)
+
+        #最后一笔是前面的反向交易，前面是买，最后是卖
+        sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,1)
+
+        #打印这次的卖平仓操作记录
+        write_sell_to_file(print_count)
+        final_write_trade_to_file(print_count)
+
+        DanCiJiaoYiJieSu_QingLing()
+        print_count = print_count + 1
+
+        '''
+        if Time_split=="15:00:00":
+            write_Statics_to_file(i,print_count,Gain_count)
+            DangTian_Statics_QingLing()
+        '''
+        return 2
+    else:
+        return -9
+
+'''
+def PingCang_BuGuan_LiRun_and_ShouPan_PingCang(i,sell_point,buy_point,deal,Time_split):
+
+    global YinLi_KaiQi_KEY
+    global fanzhuan_macd_meiyou_pingcang
+
+    global DianShu
+    global LiXi_XiShu
+
+    global buy_stock_sum
+    global buy_average_pri
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+
+    global sell_stock_sum
+    global sell_average_pri
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+
+    global print_count
+    global Gain_count
+
+    global sell_CiShu
+    global sell_stock
+    global sell_ZhiFu
+    global sell_pri
+    global sell_YongJing
+    global sell_Date
+    global sell_tag
+    global sell_count_in_day
+    global sell_sub_count
+    global sell_stock_sum
+    global sell_ZhiFu_sum
+    global sell_YongJing_sum
+    global sell_average_pri
+
+    global buy_CiShu
+    global buy_stock
+    global buy_ZhiFu
+    global buy_pri
+    global buy_YongJing
+    global buy_Date
+    global buy_tag
+    global buy_count_in_day
+    global buy_sub_count
+    global buy_stock_sum
+    global buy_ZhiFu_sum
+    global buy_YongJing_sum
+    global buy_average_pri
+
+    #=====Part 6.卖点为主,追求追高利润为目的，遇到MACD反转select_fanzhuan_macd_ok == 1则进行平仓=====
+    if sell_point == 0 and buy_point == 0 and deal == -1 and ((YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0) or Time_split=="15:00:00"):
+        #难道不盈利就不平仓吗，应该要强制平仓！
+        #最后一笔是前面的反向交易，这里前面是卖，最后是买；
+        how_many_2_buy=np.float64(sell_stock_sum.tail(1))
+        #  对于既满足条件1： sell_point == 0 and buy_point == 0 and deal == -1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0)
+        #  又满足条件2：Time_split=="15:00:00"
+        #  优先匹配条件1，交易价格是开盘价
+        #  当不满足条件1，但满足条件2，强行平仓，交易价格是收盘价
+        if sell_point == 0 and buy_point == 0 and deal == -1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0):
+            what_price_2_buy=Today_open
+        elif Time_split=="15:00:00":
+            what_price_2_buy=Today_end
+        #temp_last_cost = sell_stock_sum[-1] * Today_open
+        temp_last_cost=how_many_2_buy*what_price_2_buy
+        #最后是盈利还是亏损呢？
+        temp_gain_or_loss = np.float64(sell_ZhiFu_sum.tail(1)) * (1 - LiXi_XiShu) - np.float64(sell_YongJing_sum.tail(1)) - (temp_last_cost + max(temp_last_cost * DianShu, 5))
+        if temp_gain_or_loss > -1:
+            Gain_count = Gain_count + 1
+
+        #打印之前的卖操作记录
+        write_sell_to_file(print_count)
+
+        #最后一笔是前面的反向交易，前面是卖，最后是买
+        buy_ZhiFu_sum_latest,buy_YongJing_sum_latest,buy_stock_sum_latest=Base_Buy(i,how_many_2_buy,what_price_2_buy,1)
+        #打印这次的买平仓操作记录
+        write_buy_to_file(print_count)
+
+        DanCiJiaoYiJieSu_QingLing()
+        if Time_split=="15:00:00":
+            write_Statics_to_file(i,print_count,Gain_count)
+            DangTian_Statics_QingLing()
+        else:
+            #强制平仓后本次交易结束，次数加1
+            print_count = print_count + 1
+        return 1
+
+    if sell_point == 0 and buy_point == 0 and deal == 1 and ((YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0)  or Time_split=="15:00:00"):
+        #难道不盈利就不平仓吗，应该要强制平仓！
+
+        #最后一笔是前面的反向交易，这里前面是买，最后是卖
+        how_many_2_sell= -np.float64(buy_stock_sum.tail(1))
+        #  对于既满足条件1：sell_point == 0 and buy_point == 0 and deal == 1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0)
+        #  又满足条件2：Time_split=="15:00:00"
+        #  优先匹配条件1，交易价格是开盘价
+        #  当不满足条件1，但满足条件2，强行平仓，交易价格是收盘价
+        if sell_point == 0 and buy_point == 0 and deal == 1 and (YinLi_KaiQi_KEY == 1 and select_fanzhuan_macd_ok == 1 and fanzhuan_macd_meiyou_pingcang == 0):
+            what_price_2_sell=Today_open
+        elif Time_split=="15:00:00":
+            what_price_2_sell=Today_end
+        #temp_last_cost = buy_stock_sum[-1] * Today_open
+        temp_last_cost=how_many_2_sell*what_price_2_sell
+        #最后是盈利还是亏损呢？
+        #卖出得到的钱，没看错，是buy_stock...；减掉"卖出的佣金"；减掉"之前购买的消耗"；减掉"利息"；减掉"之前购买消耗的佣金"
+        temp_gain_or_loss = temp_last_cost - max(temp_last_cost * DianShu, 5) - np.float64(buy_ZhiFu_sum.tail(1)) - np.float64(buy_ZhiFu_sum.tail(1)) * LiXi_XiShu - np.float64(buy_YongJing_sum.tail(1))
+
+        if temp_gain_or_loss > -1:
+            Gain_count = Gain_count + 1
+
+        #打印之前的买操作记录
+        write_buy_to_file(print_count)
+
+        #最后一笔是前面的反向交易，前面是买，最后是卖
+        sell_ZhiFu_sum_latest,sell_YongJing_sum_latest,sell_stock_sum_latest=Base_Sell(i,how_many_2_sell,what_price_2_sell,1)
+
+        #打印这次的卖平仓操作记录
+        write_sell_to_file(print_count)
+
+        DanCiJiaoYiJieSu_QingLing()
+
+        if Time_split=="15:00:00":
+            write_Statics_to_file(i,print_count,Gain_count)
+            DangTian_Statics_QingLing()
+        else:
+            #强制平仓后本次交易结束，次数加1
+            print_count = print_count + 1
+        return 2
+    else:
+        return -9
+'''
+
+def write_Statics_to_file(i,print_count,Gain_count):
+    global df
+    Date=df.index[i].strftime("%Y-%m-%d")
+
+    #f=ope("C:\\9\\Statics_Trade_in_Day.csv",'w+'
+    f=open("C:\\9\\Statics_Trade_in_Day.csv",'a+')
+
+    if len(f.readlines())==0:
+        print>>f,'Date,Count_All,Gain_All,Gain_Percent=Gain_All/Count_All'
+    if print_count-1>0:
+        print>>f,Date+','+str(print_count-1)+','+str(Gain_count)+','+str(np.float64(Gain_count)/np.float64((print_count-1))*100)
+    else:
+        print>>f,Date+','+str(print_count-1)+','+str(Gain_count)+','+'NaN'
+
+    f.close()
+
+def DangTian_Statics_QingLing():
+    global print_count
+    global Gain_count
+    print_count = 1
+    Gain_count = 0
+
+
+def MACD_FangShou_JianCe(i,MACD_FangShou_JianCe_KEY):
+    global SELECT_TOP_MACD_Num
+    global This_deal_TOP_MACD_point
+    global This_deal_TOP_MACD_point_Date
+    global This_deal_TOP_MACD_Count
+    global This_deal_TOP_MACD4Pri
+
+    global This_deal_LOW_MACD_point
+    global This_deal_LOW_MACD_point_Date
+    global This_deal_LOW_MACD_Count
+    global This_deal_LOW_MACD4Pri
+
+    global MACD_MACD
+
+    # 如果使用参数传递，可能会涉及复制耗时久，未测试
+    global df
+
+    select_fanzhuan_macd_ok = 0
+
+    if deal == 1 and MACD_FangShou_JianCe_KEY == 1:
+        Middle_Value = MACD_MACD[i - SELECT_TOP_MACD_Num / 2 - 1]
+        for tmp_4 in range(1, SELECT_TOP_MACD_Num / 2+1):
+            # 假设从5个中找MACD最值，到index=i的数据时，确认i-3为中心，然后比较i，i-1，i-2，i-4,i-5
+            if Middle_Value >= MACD_MACD[i - tmp_4]:
+                select_fanzhuan_macd_ok = 1
+            else:
+                select_fanzhuan_macd_ok = 0
+                break
+
+            if Middle_Value >= MACD_MACD[i - (SELECT_TOP_MACD_Num / 2 + 1) - tmp_4]:
+                select_fanzhuan_macd_ok = 1
+            else:
+                select_fanzhuan_macd_ok = 0
+                break
+        # 记录反转点
+        if select_fanzhuan_macd_ok == 1:
+            This_deal_TOP_MACD_point[This_deal_TOP_MACD_Count] = Middle_Value
+            #This_deal_TOP_MACD_point_Date[This_deal_TOP_MACD_Count] = df.index[i - SELECT_TOP_MACD_Num / 2 - 1]
+            This_deal_TOP_MACD_point_Date[This_deal_TOP_MACD_Count] = df.index[i]
+            #当前蜡烛图出现后，都是判断前一个已形成的蜡烛图的状态
+            This_deal_TOP_MACD4Pri[This_deal_TOP_MACD_Count]=Close[i-1-SELECT_TOP_MACD_Num/2]
+            This_deal_TOP_MACD_tag[This_deal_TOP_MACD_Count]="MACD_FangZhuan"
+            This_deal_TOP_MACD_Count = This_deal_TOP_MACD_Count + 1
+
+            # 取消对MACD高度要求
+            TOP_Level_NO_Strict = 1
+
+    if deal == -1 and MACD_FangShou_JianCe_KEY == 1:
+        Middle_Value = MACD_MACD[i - SELECT_TOP_MACD_Num / 2 - 1]
+        for tmp_4 in range(1, SELECT_TOP_MACD_Num / 2+1):
+            # 假设从5个中找MACD最值，到index=i的数据时，确认i-3为中心，然后比较i，i-1，i-2，i-4,i-5
+            if Middle_Value <= MACD_MACD[i - tmp_4]:
+                select_fanzhuan_macd_ok = 1
+            else:
+                select_fanzhuan_macd_ok = 0
+                break
+
+            if Middle_Value <= MACD_MACD[i - (SELECT_TOP_MACD_Num / 2 + 1) - tmp_4]:
+                select_fanzhuan_macd_ok = 1
+            else:
+                select_fanzhuan_macd_ok = 0
+                break
+
+        # 记录反转点
+        if select_fanzhuan_macd_ok == 1:
+            This_deal_LOW_MACD_point[This_deal_LOW_MACD_Count] = Middle_Value
+            #This_deal_LOW_MACD_point_Date[This_deal_LOW_MACD_Count] = df.index[i - SELECT_TOP_MACD_Num / 2 - 1]
+            This_deal_LOW_MACD_point_Date[This_deal_LOW_MACD_Count] = df.index[i]
+            This_deal_LOW_MACD4Pri[This_deal_LOW_MACD_Count]=Close[i-1-SELECT_TOP_MACD_Num/2]
+            This_deal_LOW_MACD_tag[This_deal_LOW_MACD_Count]="MACD_FangZhuan"
+            This_deal_LOW_MACD_Count = This_deal_LOW_MACD_Count + 1
+            # 取消对MACD高度要求
+            TOP_Level_NO_Strict = 1
+
+    return select_fanzhuan_macd_ok
+
+def MACD_JiaGe_BeiLi_JianCe(i,select_fanzhuan_macd_ok,MACD_MACD_Last_One_Before_Now,Close_Pri_Last_One_Befor_Now,BiJiao_BeiLi_MACD_TOP_BiaoZhun_point,BiJiao_BeiLi_MACD_LOW_BiaoZhun_point):
+    global This_deal_TOP_MACD_point
+    global This_deal_TOP_MACD_point_Date
+    global This_deal_TOP_MACD_Count
+    global This_deal_TOP_MACD4Pri
+
+    global This_deal_LOW_MACD_point
+    global This_deal_LOW_MACD_point_Date
+    global This_deal_LOW_MACD_Count
+    global This_deal_LOW_MACD4Pri
+
+    global df
+
+    if select_fanzhuan_macd_ok==0:
+        JieGuo_MACD_JiaGe_BeiLi_JianCe=0
+        return JieGuo_MACD_JiaGe_BeiLi_JianCe
+    elif select_fanzhuan_macd_ok==1:
+        if MACD_MACD_Last_One_Before_Now>0:
+            if np.float64(This_deal_TOP_MACD_point[BiJiao_BeiLi_MACD_TOP_BiaoZhun_point])>MACD_MACD_Last_One_Before_Now and \
+                            np.float64(This_deal_TOP_MACD4Pri[BiJiao_BeiLi_MACD_TOP_BiaoZhun_point])<Close_Pri_Last_One_Befor_Now:
+                JieGuo_MACD_JiaGe_BeiLi_JianCe=-1
+            elif np.float64(This_deal_TOP_MACD_point[BiJiao_BeiLi_MACD_TOP_BiaoZhun_point])<MACD_MACD_Last_One_Before_Now and \
+                            np.float64(This_deal_TOP_MACD4Pri[BiJiao_BeiLi_MACD_TOP_BiaoZhun_point])>Close_Pri_Last_One_Befor_Now:
+                JieGuo_MACD_JiaGe_BeiLi_JianCe=1
+            else:
+                JieGuo_MACD_JiaGe_BeiLi_JianCe=0
+
+#  相差序号小于5则代表是第二个小山坡形成了-----不使用这种算法了
+
+        elif MACD_MACD_Last_One_Before_Now<0:
+            if np.float64(This_deal_LOW_MACD_point[BiJiao_BeiLi_MACD_LOW_BiaoZhun_point])>MACD_MACD_Last_One_Before_Now and \
+                            np.float64(This_deal_LOW_MACD4Pri[BiJiao_BeiLi_MACD_LOW_BiaoZhun_point])<Close_Pri_Last_One_Befor_Now:
+                JieGuo_MACD_JiaGe_BeiLi_JianCe=-2
+            if np.float64(This_deal_LOW_MACD_point[BiJiao_BeiLi_MACD_LOW_BiaoZhun_point])<MACD_MACD_Last_One_Before_Now and \
+                            np.float64(This_deal_LOW_MACD4Pri[BiJiao_BeiLi_MACD_LOW_BiaoZhun_point])>Close_Pri_Last_One_Befor_Now:
+                JieGuo_MACD_JiaGe_BeiLi_JianCe=2
+            else:
+                JieGuo_MACD_JiaGe_BeiLi_JianCe=0
+        else:
+            JieGuo_MACD_JiaGe_BeiLi_JianCe=0
+
+        return JieGuo_MACD_JiaGe_BeiLi_JianCe
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local_date = time.strftime("%Y%m%d-%H%M%S")
+
+Latest_ALL_Output_File = "Latest_ALL_Output.xls"
+Latest_Top_N_GenZhang_Output_File = "Latest_Top_N_GenZhang_Output.xls"
+Latest_Top_N_GenDie_Output_File = "Latest_Top_N_GenDie_Output.xls"
+
+Pic_Latest_ALL_Output_File = "Pic_Latest_GenZhang.html"
+Pic_Latest_ALL_Output_File_Backup = "Pic_Latest_GenZhang-" + local_date + ".html"
+
+Pic_Latest_GenDie_Output_File = "Pic_Latest_GenDie.html"
+Pic_Latest_GenDie_Output_File_Backup = "Pic_Latest_GenDie-" + local_date + ".html"
+
+Pic_Latest_GenZhang_TopN_Output_File = "Pic_Latest_GenZhang_TopN.html"
+Pic_Latest_GenZhang_TopN_Output_File_Backup = "Pic_Latest_GenZhang_TopN" + local_date + ".html"
+
+Pic_Latest_GenDie_TopN_Output_File = "Pic_Latest_GenDie_TopN.html"
+Pic_Latest_GenDie_TopN_Output_File_Backup = "Pic_Latest_GenDie_TopN" + local_date + ".html"
+
+Backup_path = "c:\\wzr\\PyStock\\Backup\\"
+All_Output_Path = "c:\\wzr\\PyStock\\"
+df = pd.read_csv("c:\\9\\399300-1min-2.csv")
+
+# 3个时间单位的MA_x斜率，这是经验值，需要不断测试。现在给出的0.3是大致给出的数
+Min_MA5_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+Min_MA10_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+Min_MA20_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+Min_MA60_Fanzhuan_xielv_3_danwei = 0.1 / 1000
+
+# 5个时间单位的MA_x斜率，这是经验值，需要不断测试。现在给出的0.3是大致给出的数
+Min_MA5_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+Min_MA10_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+Min_MA20_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+Min_MA60_Fanzhuan_xielv_5_danwei = 0.1 / 1000
+
+# 采用通用格式，避免之前的
+# Date,Open，High，Low，Close，Volumns
+Open = df.ix[:, 1]
+High = df.ix[:, 2]
+Low = df.ix[:, 3]
+Close = df.ix[:, 4]
+# 计算MACD，指标名称完全匹配通达信
+short = 12
+long = 26
+mid = 9
+MACD_EMA_short = pd.ewma(Close, span=short, adjust=False)
+MACD_EMA_long = pd.ewma(Close, span=long, adjust=False)
+MACD_DIF = MACD_EMA_short - MACD_EMA_long
+MACD_DEA = pd.ewma(MACD_DIF, span=mid, adjust=False)
+MACD_MACD = (MACD_DIF - MACD_DEA) * 2
+
+# 计算MA5，MA10，MA20，MA30
+MA5_GROUP = pd.rolling_mean(Close, 5)
+MA5_GROUP.replace(np.nan,0, inplace=True)
+MA10_GROUP = pd.rolling_mean(Close, 10)
+MA10_GROUP.replace(np.nan,0, inplace=True)
+MA20_GROUP = pd.rolling_mean(Close, 20)
+MA20_GROUP.replace(np.nan,0, inplace=True)
+MA30_GROUP = pd.rolling_mean(Close, 30)
+MA30_GROUP.replace(np.nan,0, inplace=True)
+MA60_GROUP = pd.rolling_mean(Close, 60)
+MA60_GROUP.replace(np.nan,0, inplace=True)
+
+# 计算MA5在3、5、10天的斜率
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[2:] = MA5_GROUP[:-2]
+ShangZhang_XiaJiang_XieLv_MA5_3day_group = (MA5_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[5:] = MA5_GROUP[:-5]
+ShangZhang_XiaJiang_XieLv_MA5_5day_group = (MA5_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[10:] = MA5_GROUP[:-10]
+ShangZhang_XiaJiang_XieLv_MA5_10day_group = (MA5_GROUP - tmp_2) / tmp_2
+
+# 计算MA10在3、5、10天的斜率
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[2:] = MA10_GROUP[:-2]
+ShangZhang_XiaJiang_XieLv_MA10_3day_group = (MA10_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[5:] = MA10_GROUP[:-5]
+ShangZhang_XiaJiang_XieLv_MA10_5day_group = (MA10_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[10:] = MA10_GROUP[:-10]
+ShangZhang_XiaJiang_XieLv_MA10_10day_group = (MA10_GROUP - tmp_2) / tmp_2
+# 计算MA20在3、5、10天的斜率
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[2:] = MA20_GROUP[:-2]
+ShangZhang_XiaJiang_XieLv_MA20_3day_group = (MA20_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[5:] = MA20_GROUP[:-5]
+ShangZhang_XiaJiang_XieLv_MA20_5day_group = (MA20_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[10:] = MA20_GROUP[:-10]
+ShangZhang_XiaJiang_XieLv_MA20_10day_group = (MA20_GROUP - tmp_2) / tmp_2
+# 计算MA60在3、5、10天的斜率
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[2:] = MA60_GROUP[:-2]
+ShangZhang_XiaJiang_XieLv_MA60_3day_group = (MA60_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[5:] = MA60_GROUP[:-5]
+ShangZhang_XiaJiang_XieLv_MA60_5day_group = (MA60_GROUP - tmp_2) / tmp_2
+tmp_2 = Series([float(0)], index=range(0, len(df)))
+tmp_2[10:] = MA60_GROUP[:-10]
+ShangZhang_XiaJiang_XieLv_MA60_10day_group = (MA60_GROUP - tmp_2) / tmp_2
+
+# JunXian_QuShi_JianCe()简化成以下语句
+# JunXian_QuShi_Compare_group 为1，表示上涨趋势形成；为-1表示下跌趋势形成
+condition_1=pd.Series(np.where(MA5_GROUP > MA10_GROUP,1,0))
+condition_2=pd.Series(np.where(MA10_GROUP > MA20_GROUP,1,0))
+condition_3=pd.Series(np.where(MA20_GROUP > MA30_GROUP,1,0))
+condition_4=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA5_3day_group >= Min_MA5_Fanzhuan_xielv_3_danwei,1,0))
+condition_5=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA10_3day_group >= Min_MA10_Fanzhuan_xielv_3_danwei,1,0))
+condition_6=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA20_3day_group >= Min_MA20_Fanzhuan_xielv_3_danwei,1,0))
+JunXian_QuShi_Zhang=pd.Series(np.where(condition_1 & condition_2 & condition_3 & condition_4 & condition_5 & condition_6,1,0))
+'''
+condition_1=pd.Series(np.where(MA5_GROUP > MA10_GROUP and MA10_GROUP > MA20_GROUP and MA20_GROUP > MA30_GROUP,1,0))
+condition_2=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA5_3day_group >= Min_MA5_Fanzhuan_xielv_3_danwei \
+                               and ShangZhang_XiaJiang_XieLv_MA10_3day_group>= Min_MA10_Fanzhuan_xielv_3_danwei
+                               and ShangZhang_XiaJiang_XieLv_MA20_3day_group>= Min_MA20_Fanzhuan_xielv_3_danwei,1,0))
+'''
+'''
+condition_1=pd.Series(np.where(MA5_GROUP<MA10_GROUP and MA10_GROUP<MA20_GROUP and MA20_GROUP,MA30_GROUP,1,0))
+condition_2=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA5_3day_group <= -Min_MA5_Fanzhuan_xielv_3_danwei \
+                               and ShangZhang_XiaJiang_XieLv_MA10_3day_group<= -Min_MA10_Fanzhuan_xielv_3_danwei
+                               and ShangZhang_XiaJiang_XieLv_MA20_3day_group<= -Min_MA20_Fanzhuan_xielv_3_danwei,1,0))
+'''
+#为何不能在np.where中使用多条件condition1 and condition2 and condition3 ?
+condition_1=pd.Series(np.where(MA5_GROUP < MA10_GROUP,1,0))
+condition_2=pd.Series(np.where(MA10_GROUP < MA20_GROUP,1,0))
+condition_3=pd.Series(np.where(MA20_GROUP < MA30_GROUP,1,0))
+condition_4=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA5_3day_group <= Min_MA5_Fanzhuan_xielv_3_danwei,1,0))
+condition_5=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA10_3day_group <= Min_MA10_Fanzhuan_xielv_3_danwei,1,0))
+condition_6=pd.Series(np.where(ShangZhang_XiaJiang_XieLv_MA20_3day_group <= Min_MA20_Fanzhuan_xielv_3_danwei,1,0))
+JunXian_QuShi_Die=pd.Series(np.where(condition_1 & condition_2 & condition_3 & condition_4 & condition_5 & condition_6,-1,0))
+
+JunXian_QuShi_Compare_group=JunXian_QuShi_Zhang+JunXian_QuShi_Die
+
+Start_trade_time = "10:00:00"
+End_trade_time = "15:00:00"
+Start_index = 130 + SELECT_TOP_MACD_Num + 1
+# 增加序号方便后续操作，index后面将会被改成时间系列
+df['XuHao']=df.index
+df.index = pd.tseries.index.DatetimeIndex(df['Date'])
+
+# 设置时间范围，10:00前，14:30后不新开仓操作；已开仓的继续操作
+Time_KEY = 1
+
+#DanTian_QingLing_KEY为1，当天交易清零，不留头寸过夜；
+#对于日/周...粒度肯定是DanTian_QingLing_KEY为0
+DanTian_QingLing_KEY=1
+
+if df.index[0].strftime("%H")=='00':
+    #这是天/周/月粒度
+    Day_LiDu=1
+    Time_KEY = 0
+    DanTian_QingLing_KEY=0
+#以下条件表示是小时粒度:连续两个时间点的分钟为0
+elif df.index[0].strftime("%M")=='00' and df.index[1].strftime("%M")=='00':
+    Day_LiDu=2
+    Time_KEY = 0
+    DanTian_QingLing_KEY=0
+else:
+    Day_LiDu=0
+
+
+for i in range(0, len(df)):
+    Today_end = Close[i]
+    Today_open = Open[i]
+    Today_Min=Low[i]
+    Today_Max=High[i]
+    Time_split = df.index[i].strftime("%H:%M:%S")
+    #记录昨日收盘价
+    if Yesterday_End == -99:
+        Yesterday_End = Today_end
+    elif Time_split == "15:00:00":
+        Yesterday_End = Today_end
+    #表示天/周/月粒度
+    elif Time_split == "00:00:00":
+        Yesterday_End = Close[i-1]
+    #在>=Start_index条件满足后，MACD与全量数据计算出来的都一样了，这时开始计算买卖
+    if i>=Start_index:
+        if (Time_split >= Start_trade_time and Time_split <= End_trade_time) or Time_KEY==0 or Day_LiDu==1:
+
+            # 大致判断今天使用买点、卖点还是买卖点都使用
+            if MACD_KEY==0:
+                MACD_KEY=MACD_KEY_Yu_PanDuan(i)
+            # 是否有MACD最高点或最低点出现
+            select_top_macd_ok,Middle_Value=Select_Top_Low_Macd()
+            Series_select_top_macd_ok[i]=select_top_macd_ok
+            # MACD最高点或最低点出现,是否有买卖点产生
+            if select_top_macd_ok != 0 and  FanZhuan_deal_has_trade==0:
+                buy_point,sell_point,MACD_FangShou_JianCe_KEY,MACD_HengPan_JianCe_KEY=MACD_BUY_OR_SELL(i, Time_split,select_top_macd_ok,Middle_Value,MACD_KEY)
+            if buy_point or sell_point:
+                buy_point,sell_point,deal=Normal_BUY_or_SELL(i,buy_point, sell_point,MACD_KEY,Today_open)
+            #当买/卖执行后，buy_point和sell_point会全部为0；这时即使是在相同的时间粒度内，也就可以执行相反的卖、买平仓操作；因此不需要else
+            #else:
+            if deal != 0 and MACD_FangShou_JianCe_KEY == 1 and select_fanzhuan_macd_ok == 0:
+                select_fanzhuan_macd_ok=MACD_FangShou_JianCe(i,MACD_FangShou_JianCe_KEY)
+                Series_select_fanzhuan_macd_ok[i]=select_fanzhuan_macd_ok
+                if select_fanzhuan_macd_ok==1:
+                    if MACD_MACD[i]>0:
+                        # 反手出现且MACD大于0，表示背离判断中的是比较MACD的最近一个最大值
+                        BiJiao_BeiLi_MACD_TOP_BiaoZhun_point=np.int32(This_deal_TOP_MACD_point.tail(1).index)
+                    elif MACD_MACD[i]<0:
+                        #BiJiao_BeiLi_MACD_LOW_BiaoZhun_point=This_deal_LOW_MACD_Count
+                        BiJiao_BeiLi_MACD_LOW_BiaoZhun_point=np.int32(This_deal_LOW_MACD_point.tail(1).index)
+            else:
+                Series_select_fanzhuan_macd_ok[i]=select_fanzhuan_macd_ok
+
+            #增加让select_fanzhuan_macd_ok变为0的条件：不是真实反转，虚晃一枪
+            #MACD_MACD[i]*MACD_MACD[i-1]<0 表示穿越0轴
+            if select_fanzhuan_macd_ok==1 and MACD_MACD[i]*MACD_MACD[i-1]<0:
+                select_fanzhuan_macd_ok=0
+                Series_select_fanzhuan_macd_ok[i]=select_fanzhuan_macd_ok
+
+            #出现反转过程中，MACD为正的时候，可能出现 MACD(高)-MACD（低)-MACD（更高）
+            #MACD为负的时候，可能出现 MACD(低)-MACD（高)-MACD（更低）
+            #这个时候背离的标准必须更换为MACD（更高），MACD（更低）
+            '''#暂时不启用吧
+            if select_fanzhuan_macd_ok==1:
+                if This_deal_TOP_MACD_point[BiJiao_BeiLi_MACD_TOP_BiaoZhun_point]<=This_deal_TOP_MACD_point.tail(1):
+                    BiJiao_BeiLi_MACD_TOP_BiaoZhun_point=np.int32(This_deal_TOP_MACD_point.tail(1).index)
+                if This_deal_LOW_MACD_point[BiJiao_BeiLi_MACD_LOW_BiaoZhun_point]>=This_deal_LOW_MACD_point.tail(1):
+                    BiJiao_BeiLi_MACD_LOW_BiaoZhun_point=np.int32(This_deal_LOW_MACD_point.tail(1).index)
+            '''
+
+            # JunXian_QuShi_ChengLi_JianCe检测均线是否已形成买/卖趋势形态，无条件例行检查
+            JieGuo_JunXian_QuShi_JianCe,MACD_KEY=JunXian_QuShi_ChengLi_JianCe(i,MACD_KEY)
+            # MACD_JiaGe_BeiLi_JianCe检测价格形态和MACD形状是否背离，无条件例行检查
+            JieGuo_MACD_JiaGe_BeiLi=MACD_JiaGe_BeiLi_JianCe(i,select_fanzhuan_macd_ok,MACD_MACD[i-1],Close[i-1],BiJiao_BeiLi_MACD_TOP_BiaoZhun_point,BiJiao_BeiLi_MACD_LOW_BiaoZhun_point)
+            #储存结果到时打印出来看下是否正确
+            Series_JieGuo_MACD_JiaGe_BeiLi[i]= JieGuo_MACD_JiaGe_BeiLi
+            #只是考虑一次反转交易
+            #YinLi_KaiQi_KEY == 1,表示一有反转就平仓，根本没机会进行反手交易；因此这个条件要加入
+            if JieGuo_JunXian_QuShi_JianCe != 0 and select_fanzhuan_macd_ok == 1 and FanZhuan_deal_has_trade==0 and YinLi_KaiQi_KEY == 0:
+                FanZhuan_deal_has_trade,deal=FanZhuan_deal(i,Today_open)
+
+            #if sell_point == 0 and buy_point == 0 and deal != 0 and YinLi_KaiQi_KEY == 0 and (FanZhuan_deal_has_trade == 0 or Time_split=="15:00:00"):
+            if sell_point == 0 and buy_point == 0 and deal != 0 and YinLi_KaiQi_KEY == 0 and FanZhuan_deal_has_trade == 0:
+                result_tmp=PingCang_DaDao_PingJun_JiaGe(i,sell_point, buy_point, deal,FanZhuan_deal_has_trade,Today_Min,Today_Max,Today_end)
+            # sell_point == 0 and buy_point == 0 and deal !=0 and YinLi_KaiQi_KEY == 0 and (FanZhuan_deal_has_trade != 0 or Time_split=="15:00:00"):
+            if sell_point == 0 and buy_point == 0 and deal !=0 and YinLi_KaiQi_KEY == 0 and FanZhuan_deal_has_trade != 0:
+                # 处于反手状态（共3个交易阶段）的交易，尾盘的强制平仓必须在这里完成，相对VBA中的DangTianQiangZhiPingCang()进行了整合
+                result_tmp=PingCang_FanShou_BaoBen_and_ShouPan_PingCang(i,sell_point,buy_point,deal,FanZhuan_deal_has_trade,Today_Min,Today_Max,Today_end)
+            if (sell_point == 0 and buy_point == 0 and deal !=0 and YinLi_KaiQi_KEY == 1 and (select_fanzhuan_macd_ok == 1 or Time_split=="15:00:00")):
+                result_tmp=PingCang_BuGuan_LiRun_and_ShouPan_PingCang(i,sell_point,buy_point,deal,Time_split)
+
+            Series_deal[i]=deal
+
+
+        if  Time_split == "15:00:00"and DanTian_QingLing_KEY==1:
+            write_Statics_to_file(i,print_count,Gain_count)
+            DangTian_Statics_QingLing()
+
+if Day_LiDu==1:
+    write_Statics_to_file(i,print_count,Gain_count)
+    DangTian_Statics_QingLing()
+
+
+
+#最后将全程检测结果在文件输出方便排查
+'''
+Series_JieGuo_MACD_JiaGe_BeiLi.index=df.index
+Series_select_fanzhuan_macd_ok.index=df.index
+df['BeiLi']=Series_JieGuo_MACD_JiaGe_BeiLi
+df['FanZhuan']=Series_select_fanzhuan_macd_ok
+df.to_excel('c:\\9\\Test_key.xls')
+'''
+df_test_tmp2=df
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['BeiLi']=Series_JieGuo_MACD_JiaGe_BeiLi
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['FanZhuan']=Series_select_fanzhuan_macd_ok
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['MACD_DIF']=MACD_DIF
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['MACD_DEA']=MACD_DEA
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['MACD_MACD']=MACD_MACD
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['Deal']=Series_deal
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['TOPest_LOWest_MACD']=Series_select_top_macd_ok
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_on='XuHao',right_index=True,how='outer')
+
+df_test_tmp1=pd.DataFrame()
+df_test_tmp1['Date_S_or_B']=This_deal_LOW_MACD_point_Date
+df_test_tmp1['LOW_MACD_Value']=This_deal_LOW_MACD_point
+df_test_tmp1['LOW_MACD_2_Pri']=This_deal_LOW_MACD4Pri
+df_test_tmp1['LOW_MACD_Tag']=This_deal_LOW_MACD_tag
+
+df_test_tmp3=pd.DataFrame()
+df_test_tmp3['Date_S_or_B']=This_deal_TOP_MACD_point_Date
+df_test_tmp3['TOP_MACD_Value']=This_deal_TOP_MACD_point
+df_test_tmp3['TOP_MACD_2_Pri']=This_deal_TOP_MACD4Pri
+df_test_tmp3['TOP_MACD_Tag']=This_deal_TOP_MACD_tag
+
+df_test_tmp1=pd.merge(df_test_tmp1,df_test_tmp3,on='Date_S_or_B',how='outer')
+
+df_test_tmp2=pd.merge(df_test_tmp2,df_test_tmp1,left_index=True,right_on='Date_S_or_B',how='outer')
+
+df_test_tmp2.to_csv('c:\\9\\Test_key.csv')
