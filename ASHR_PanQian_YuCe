@@ -1,8 +1,16 @@
+# coding=utf-8
+
+#根据当天HS300的涨跌，提示ASHR的预测金额以及是否要操作
 import time
-import string
-#import easygui
-#easygui.msgbox("hello world")
+import numpy as np
+import pandas as pd
+
+import os
+import win32file
+import tempfile
+
 local_date=time.strftime('%Y-%m-%d',time.localtime(time.time()-24*60*60))
+result_file="c:\\IBM-9\\IBM_ASHR_PanDuan\\HS300-CaoZuoPanDuan.csv"
 
 import pandas.io.data as web
 #data_yahoo=web.get_data_yahoo('ASHR',local_date,local_date)
@@ -11,7 +19,6 @@ import pandas.io.data as web
 #data_yahoo=web.get_data_yahoo('ASHR','10/30/2015','10/30/2015')
 
 import requests
-
 data_sina=requests.get('http://hq.sinajs.cn/list=sh000300')
 data_stock=data_sina.text.split(',')
 data_stock_Open=data_stock[1]
@@ -21,21 +28,54 @@ data_stock_High=data_stock[4]
 data_stock_Low=data_stock[5]
 data_stock_Date=data_stock[30]
 
-c2=data_stock_Date+','+data_stock_Close+','+data_stock_YesterdayClose+','
-f=open("c:\\9\\HS300-CaoZuoPanDuan.csv","a")
-if data_stock_Close>=data_stock_YesterdayClose:
-    percent=(string.atof(data_stock_High)-string.atof(data_stock_Close))/(string.atof(data_stock_High)-string.atof(data_stock_Low))*100
-    c2=c2+'Zhang,'+ '%.4f'%percent,+','
+#c2=str(data_stock_Date)+','+str(data_stock_Close)+','+str(data_stock_YesterdayClose)+','
+c2=data_stock_Date+','+data_stock_Open+','+data_stock_High+','+data_stock_Low+','+data_stock_Close+','+data_stock_YesterdayClose+','
+
+if np.float64(data_stock_Close)>=np.float64(data_stock_YesterdayClose):
+	c2=c2+'Zhang,'+str( ( np.float64(data_stock_High) - np.float64(data_stock_Close) )/( np.float64(data_stock_High)-np.float64(data_stock_Low) )*100)+','
 else:
-    percent=(string.atof(data_stock_Low)-string.atof(data_stock_Close))/(string.atof(data_stock_High)-string.atof(data_stock_Low))*100
-    c2=c2+'Die,'+ '%.4f'%percent+','
+	c2=c2+'Die,'+str((np.float64(data_stock_Low)-np.float64(data_stock_Close))/(np.float64(data_stock_High)-np.float64(data_stock_Low))*100)+','
+
 
 data_sina=requests.get('http://hq.sinajs.cn/list=gb_ashr')
 data_stock=data_sina.text.split(',')
 data_stock_US_Close=data_stock[1]
-price_yuce=string.atof(data_stock_US_Close)*((string.atof(data_stock_Close)-string.atof(data_stock_YesterdayClose))/string.atof(data_stock_YesterdayClose)+1)
-c2=c2+data_stock_US_Close+','+'%.4f'%price_yuce+'\r'
+#c2=c2+str(data_stock_US_Close)+','+str(np.float64(data_stock_US_Close)*((np.float64(data_stock_Close)-np.float64(data_stock_YesterdayClose))/np.float64(data_stock_YesterdayClose)+1))+'\r'
+c2=c2+str(data_stock_US_Close)+','+str(np.float64(data_stock_US_Close)*((np.float64(data_stock_Close)-np.float64(data_stock_YesterdayClose))/np.float64(data_stock_YesterdayClose)+1))
+
+if os.path.exists(result_file)==False:
+	#os.mknod(result_file,mode="a")
+	f=open(result_file,"w")
+	print>>f,"Date,Today_Open,Today_High,Today_Low,Today_Close,Yesterday_Close,Zhang_or_Die,2_High_Low_%,ASHR_Yesterday_Close,ASHR_YuCe"
+	f.close()
+
+df=pd.read_csv(result_file)
+length=len(df['Date'])
+if length>=1:
+	former_day=df['Date'].ix[length-1]
+else:
+	former_day=None
+
+#======================================================================
+# open的模式中a+是有问题的？？？？？，出现乱码以及各种乱七八糟的字符
+#f=open("c:\\wzr\\ASHR_PanDuan\\HS300-CaoZuoPanDuan.csv","a+")
+#print>>f,'Date,Today_Close,Yesterday_Close,Zhang_or_Die,Percent,ASHR_Yesterday_Close,ASHR_YuCe'
+#======================================================================
 
 
-f.write(c2)
-f.close()
+#======================================================================
+# IPython readlines()没问题，但是在PyCharm确实不行，只是返回0
+#readlines()操作后文件指针自动跑到文件末尾
+#以下是为了判断当新文件的时候（读出来的行数是0），增加最上面一行，但是结果不符预期
+#if len(f.readlines())== 0:
+#    print>>f,'Date,Today_Close,Yesterday_Close,Zhang_or_Die,Percent,ASHR_Yesterday_Close,ASHR_YuCe'
+#    former_day=None
+#======================================================================
+
+if former_day!=data_stock_Date:
+	f=open(result_file,"a")
+	print>>f,c2
+	f.close()
+
+
+
