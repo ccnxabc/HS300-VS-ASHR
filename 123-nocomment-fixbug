@@ -34,7 +34,7 @@ data_stock_US_date_string=year+" "+month+" "+day
 xxx=time.strptime(data_stock_US_date_string,"%Y %b %d")
 data_stock_US_date=time.strftime("%Y-%m-%d",xxx)
 
-df=pd.read_csv("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv")
+df=pd.read_csv("c:\\wzr\\PyStock\\ASHR-HS300\\ASHR-HS300.csv")
 length=len(df['Date'])
 former_day=df['Date'].ix[length-1]
 
@@ -48,7 +48,7 @@ if str(former_day)!=str(data_stock_US_date) and str(former_day)!=str(data_stock_
 
 
     #f=open("c:\\9\\20151107.csv","a")
-    f=open("c:\\9\\CSV-ASHR vs HS300-20150101-20151023-3.csv","a")
+    f=open("c:\\wzr\\PyStock\\ASHR-HS300\\ASHR-HS300.csv","a")
     f.write(c2)
     f.close()
 
