@@ -314,7 +314,8 @@ write_2_html_part_3="""
         require(
             [
                 'echarts',
-                'echarts/chart/line'
+                'echarts/chart/line',
+		'echarts/chart/bar'
             ],
             function (ec) {
                 var myChart = ec.init(document.getElementById('main'));
